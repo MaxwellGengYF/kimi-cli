@@ -275,7 +275,7 @@ def parse_skill_text(content: str, *, dir_path: KaosPath) -> Skill:
     frontmatter = parse_frontmatter(content) or {}
 
     name = frontmatter.get("name") or dir_path.name
-    description = frontmatter.get("description") or "No description provided."
+    description = frontmatter.get("description") or ""
     skill_type = frontmatter.get("type") or "standard"
     if skill_type not in ("standard", "flow"):
         raise ValueError(f'Invalid skill type "{skill_type}"')

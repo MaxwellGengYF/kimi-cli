@@ -8,7 +8,7 @@ from kimi_cli.tools.utils import load_desc
 
 
 class Params(BaseModel):
-    thought: str = Field(description=("A thought to think about."))
+    thought: str = Field(description="Thought to log.")
 
 
 class Think(CallableTool2[Params]):

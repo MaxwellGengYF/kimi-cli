@@ -1,27 +1,19 @@
 from __future__ import annotations
 
-import contextlib
 import json
-import os
-import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
+_global_io_lock = threading.Lock()
+
 
 def atomic_json_write(data: Any, path: Path) -> None:
-    """Write JSON data to a file atomically using tmp-file + os.replace.
+    """Write JSON data to a file directly (non-atomic).
 
-    This prevents data corruption if the process crashes mid-write: either the
-    old file is kept intact or the new file is fully committed.
+    Note: This overwrites the file in-place. A crash during write may leave
+    the file in a partially written/corrupted state.
     """
-    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
+    with _global_io_lock:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_path, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_path)
-        raise

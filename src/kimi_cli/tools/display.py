@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 
 class DiffDisplayBlock(DisplayBlock):
-    """Display block describing a file diff."""
+    """Display block for a file diff."""
 
     type: str = "diff"
     path: str
@@ -22,14 +22,14 @@ class TodoDisplayItem(BaseModel):
 
 
 class TodoDisplayBlock(DisplayBlock):
-    """Display block describing a todo list update."""
+    """Display block for a todo list update."""
 
     type: str = "todo"
     items: list[TodoDisplayItem]
 
 
 class ShellDisplayBlock(DisplayBlock):
-    """Display block describing a shell command."""
+    """Display block for a shell command."""
 
     type: str = "shell"
     language: str
@@ -37,7 +37,7 @@ class ShellDisplayBlock(DisplayBlock):
 
 
 class BackgroundTaskDisplayBlock(DisplayBlock):
-    """Display block describing a background task."""
+    """Display block for a background task."""
 
     type: str = "background_task"
     task_id: str

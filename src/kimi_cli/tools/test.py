@@ -12,7 +12,7 @@ class PlusParams(BaseModel):
 
 class Plus(CallableTool2[PlusParams]):
     name: str = "plus"
-    description: str = "Add two numbers"
+    description: str = "Add two numbers."
     params: type[PlusParams] = PlusParams
 
     @override
@@ -27,7 +27,7 @@ class CompareParams(BaseModel):
 
 class Compare(CallableTool2[CompareParams]):
     name: str = "compare"
-    description: str = "Compare two numbers"
+    description: str = "Compare two numbers."
     params: type[CompareParams] = CompareParams
 
     @override
@@ -46,7 +46,7 @@ class PanicParams(BaseModel):
 
 class Panic(CallableTool2[PanicParams]):
     name: str = "panic"
-    description: str = "Raise an exception to cause the tool call to fail."
+    description: str = "Intentionally throw an exception."
     params: type[PanicParams] = PanicParams
 
     @override

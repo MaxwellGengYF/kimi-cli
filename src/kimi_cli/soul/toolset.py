@@ -59,6 +59,20 @@ if TYPE_CHECKING:
 current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=None)
 
 _current_session_id: ContextVar[str] = ContextVar("_current_session_id", default="")
+_temp_idx = 0
+
+_temp_folder = Path.home() / '.kimi' / 'logs'
+
+def _export_to_temp_file(content: str, ext:str='.log') -> tuple[str, bool]:
+    global _temp_idx
+    """Export content to a temporary file and return the file path."""
+    id = _temp_idx
+    _temp_idx += 1
+    name = str(_temp_folder / (str(id) + ext))
+    # Append content if key exists, otherwise overwrite/create
+    with open(name, 'w', encoding='utf-8') as f:
+        f.write(content)
+    return name
 
 
 def set_session_id(sid: str) -> None:
@@ -91,13 +105,15 @@ if TYPE_CHECKING:
 
 
 class KimiToolset:
-    def __init__(self) -> None:
+    def __init__(self, tool_call_failed_list: list[tuple[str, str, str, str]] | None = None) -> None:
         self._tool_dict: dict[str, ToolType] = {}
         self._hidden_tools: set[str] = set()
         self._mcp_servers: dict[str, MCPServerInfo] = {}
         self._mcp_loading_task: asyncio.Task[None] | None = None
         self._deferred_mcp_load: tuple[list[MCPConfig], Runtime] | None = None
         self._hook_engine: HookEngine = HookEngine()
+        self._recent_tool_calls: list[str] = []
+        self._tool_call_failed_list = tool_call_failed_list
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -187,7 +203,64 @@ class KimiToolset:
                 # --- Execute tool ---
                 t0 = time.monotonic()
                 try:
-                    ret = await tool.call(arguments)
+                    #### Check for repetitive tool calls, Add by maxwell
+                    arg_str = str(arguments)
+                    call_key_str = str(tool_call.function.name) + arg_str
+                    import hashlib
+                    call_key_hash = hashlib.md5(call_key_str.encode()).hexdigest()
+                    self._recent_tool_calls.append(call_key_hash)
+                    calls_len = len(self._recent_tool_calls)
+                    MAX_CALL_ALLOWED = 4
+                    if calls_len > MAX_CALL_ALLOWED:
+                        self._recent_tool_calls = self._recent_tool_calls[calls_len - MAX_CALL_ALLOWED:]
+                        calls_len = MAX_CALL_ALLOWED
+                    all_same = True
+                    if calls_len >= MAX_CALL_ALLOWED:
+                        for i in self._recent_tool_calls[1:]:
+                            if self._recent_tool_calls[0] != i:
+                                all_same = False
+                                break
+                    else:
+                        all_same = False
+                    if all_same:
+                        ret = ToolError(
+                            output='',
+                            message=f"Detected 3 consecutive identical tool calls: {tool_call.function.name}, Illegal.",
+                            brief='consecutive identical tool calls'
+                        )
+                    else:
+                        # Colorful print, Add by maxwell
+                        text = ''
+                        lst = [f'{tool_call.function.name}: [']
+                        is_first = True
+                        for k, v in tool_input_dict.items():
+                            if is_first:
+                                is_first = False
+                            else:
+                                lst.append(' | ')
+                            value = str(v)
+                            if len(value) > 32:
+                                value = f'{value[:32]}...'
+                            value = value.replace('\n', ' ')
+                            lst.append(f'{k}: {value}')
+                        lst.append(']')
+                        text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
+                        print(text)
+                        ret = await tool.call(arguments)
+                        if ret.output and len(ret.output) > 65536:   # Add by Maxwell: process large size
+                            temp_file = _export_to_temp_file(ret.output)
+                            ret.output = f'Output too large, exported to `{temp_file}`'
+                        if not ret.is_error:
+                            self._recent_tool_calls.clear()
+                        else:
+                            if self._tool_call_failed_list is not None:
+                                self._tool_call_failed_list.append((tool_call.function.name, arg_str, str(ret.output), ret.message))
+                            err_msg = ret.brief
+                            if not err_msg:
+                                err_msg = ret.message
+                            text = f"\033[0;91merror: {err_msg}\033[0m" # BRIGHT_MAGENTA
+                            print(text)
+                            
                 except Exception as e:
                     logger.exception(
                         "Tool execution failed: {tool_name} (call_id={call_id})",

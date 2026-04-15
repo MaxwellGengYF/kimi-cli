@@ -248,6 +248,10 @@ class KimiSoul:
         if isinstance(replace_tool, StrReplaceFile):
             replace_tool.bind_plan_mode(checker, path_getter)
 
+        write_line_tool = self._agent.toolset.find("WriteLine")
+        if write_line_tool and hasattr(write_line_tool, 'bind_plan_mode') and callable(getattr(write_line_tool, 'bind_plan_mode')):
+            write_line_tool.bind_plan_mode(checker, path_getter)
+
         # ExitPlanMode has a special bind() method
         from kimi_cli.tools.plan import ExitPlanMode
 

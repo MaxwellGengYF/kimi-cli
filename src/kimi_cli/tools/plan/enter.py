@@ -13,14 +13,19 @@ from pydantic import BaseModel
 
 from kimi_cli.soul import get_wire_or_none, wire_send
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
-from kimi_cli.tools.utils import load_desc
 from kimi_cli.wire.types import QuestionItem, QuestionNotSupported, QuestionOption, QuestionRequest
 
 logger = logging.getLogger(__name__)
 
 NAME = "EnterPlanMode"
 
-_DESCRIPTION = load_desc(Path(__file__).parent / "enter_description.md")
+_DESCRIPTION = (
+    "Request plan mode before significant implementation. "
+    "Use for new features, architecture decisions, multi-file changes, or unclear requirements. "
+    "Skip for trivial fixes or pure research. "
+    "Yolo mode: only if explicitly requested or exceptional ambiguity. "
+    "Process: investigate, design, write plan, call ExitPlanMode."
+)
 
 
 class Params(BaseModel):
@@ -112,11 +117,11 @@ class EnterPlanMode(CallableTool2[Params]):
                     options=[
                         QuestionOption(
                             label="Yes",
-                            description="Enter plan mode to explore and design an approach",
+                            description="Plan and design",
                         ),
                         QuestionOption(
                             label="No",
-                            description="Skip planning, start implementing now",
+                            description="Implement directly",
                         ),
                     ],
                 )

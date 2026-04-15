@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import override
 
 import aiohttp
@@ -10,37 +9,28 @@ from kimi_cli.constant import USER_AGENT
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
 from kimi_cli.tools import SkipThisTool
-from kimi_cli.tools.utils import ToolResultBuilder, load_desc
+from kimi_cli.tools.utils import ToolResultBuilder
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
 
 
 class Params(BaseModel):
-    query: str = Field(description="The query text to search for.")
+    query: str = Field(description="Search query.")
     limit: int = Field(
-        description=(
-            "The number of results to return. "
-            "Typically you do not need to set this value. "
-            "When the results do not contain what you need, "
-            "you probably want to give a more concrete query."
-        ),
+        description="Number of results. Prefer a specific query over a high limit.",
         default=5,
         ge=1,
         le=20,
     )
     include_content: bool = Field(
-        description=(
-            "Whether to include the content of the web pages in the results. "
-            "It can consume a large amount of tokens when this is set to True. "
-            "You should avoid enabling this when `limit` is set to a large value."
-        ),
+        description="Include full page content. Increases token usage.",
         default=False,
     )
 
 
 class SearchWeb(CallableTool2[Params]):
     name: str = "SearchWeb"
-    description: str = load_desc(Path(__file__).parent / "search.md", {})
+    description: str = "Search the web."
     params: type[Params] = Params
 
     def __init__(self, config: Config, runtime: Runtime):

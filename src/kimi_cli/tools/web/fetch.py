@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import override
 
 import aiohttp
@@ -10,18 +9,18 @@ from kimi_cli.config import Config
 from kimi_cli.constant import USER_AGENT
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.toolset import get_current_tool_call_or_none
-from kimi_cli.tools.utils import ToolResultBuilder, load_desc
+from kimi_cli.tools.utils import ToolResultBuilder
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
 
 
 class Params(BaseModel):
-    url: str = Field(description="The URL to fetch content from.")
+    url: str = Field(description="URL to fetch.")
 
 
 class FetchURL(CallableTool2[Params]):
     name: str = "FetchURL"
-    description: str = load_desc(Path(__file__).parent / "fetch.md", {})
+    description: str = "Fetch a URL and extract main text."
     params: type[Params] = Params
 
     def __init__(self, config: Config, runtime: Runtime):

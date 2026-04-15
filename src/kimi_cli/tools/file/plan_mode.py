@@ -28,17 +28,14 @@ def inspect_plan_edit_target(
     plan_path = plan_file_path_getter() if plan_file_path_getter is not None else None
     if plan_path is None:
         return ToolError(
-            message="Plan mode is active, but the current plan file is unavailable.",
+            message="Plan mode active: no plan file available.",
             brief="Plan file unavailable",
         )
 
     canonical_plan_path = KaosPath(str(plan_path)).canonical()
     if str(path) != str(canonical_plan_path):
         return ToolError(
-            message=(
-                "Plan mode is active. You may only edit the current plan file: "
-                f"`{canonical_plan_path}`."
-            ),
+            message=f"Only the current plan file can be edited: `{canonical_plan_path}`.",
             brief="Plan mode restriction",
         )
 

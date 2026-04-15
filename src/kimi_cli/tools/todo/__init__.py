@@ -13,17 +13,14 @@ from kimi_cli.utils.logging import logger
 
 
 class Todo(BaseModel):
-    title: str = Field(description="The title of the todo", min_length=1)
-    status: Literal["pending", "in_progress", "done"] = Field(description="The status of the todo")
+    title: str = Field(description="Title", min_length=1)
+    status: Literal["pending", "in_progress", "done"] = Field(description="Status")
 
 
 class Params(BaseModel):
     todos: list[Todo] | None = Field(
         default=None,
-        description=(
-            "The updated todo list. "
-            "If not provided, returns the current todo list without making changes."
-        ),
+        description="Updated list. Omit to return current list unchanged.",
     )
 
 

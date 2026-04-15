@@ -2,7 +2,7 @@ from enum import StrEnum
 
 
 class FileOpsWindow:
-    """Maintains a window of file operations."""
+    """File operations window."""
 
     pass
 
@@ -10,7 +10,7 @@ class FileOpsWindow:
 class FileActions(StrEnum):
     READ = "read file"
     EDIT = "edit file"
-    EDIT_OUTSIDE = "edit file outside of working directory"
+    EDIT_OUTSIDE = "edit file outside working directory"
 
 
 from .glob import Glob  # noqa: E402

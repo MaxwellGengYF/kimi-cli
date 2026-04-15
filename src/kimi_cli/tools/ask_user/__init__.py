@@ -24,36 +24,33 @@ _BASE_DESCRIPTION = load_desc(Path(__file__).parent / "description.md")
 
 class QuestionOptionParam(BaseModel):
     label: str = Field(
-        description="Concise display text (1-5 words). If recommended, append '(Recommended)'."
+        description="Display text (1-5 words)."
     )
     description: str = Field(
         default="",
-        description="Brief explanation of trade-offs or implications of choosing this option.",
+        description="Option meaning or trade-offs.",
     )
 
 
 class QuestionParam(BaseModel):
-    question: str = Field(description="A specific, actionable question. End with '?'.")
+    question: str = Field(description="Actionable question ending with '?'.")
     header: str = Field(
-        default="", description="Short category tag (max 12 chars, e.g. 'Auth', 'Style')."
+        default="", description="Category tag (max 12 chars)."
     )
     options: list[QuestionOptionParam] = Field(
-        description=(
-            "2-4 meaningful, distinct options. Do NOT include an 'Other' option — "
-            "the system adds one automatically."
-        ),
+        description="2-4 options. 'Other' is auto-added.",
         min_length=2,
         max_length=4,
     )
     multi_select: bool = Field(
         default=False,
-        description="Whether the user can select multiple options.",
+        description="Allow multiple selections.",
     )
 
 
 class Params(BaseModel):
     questions: list[QuestionParam] = Field(
-        description="The questions to ask the user (1-4 questions).",
+        description="Questions to ask (1-4).",
         min_length=1,
         max_length=4,
     )

@@ -19,39 +19,27 @@ MAX_BACKGROUND_TIMEOUT = 60 * 60  # 1 hour
 
 
 class Params(BaseModel):
-    description: str = Field(description="A short (3-5 word) description of the task")
-    prompt: str = Field(description="The task for the agent to perform")
+    description: str = Field(description="Short task label (3–5 words).")
+    prompt: str = Field(description="Task for the agent.")
     subagent_type: str = Field(
         default="coder",
-        description="The built-in agent type to use. Defaults to `coder`.",
+        description="Built-in agent type (default: coder)."
     )
     model: str | None = Field(
         default=None,
-        description=(
-            "Optional model override. Selection priority is: this parameter, then the built-in "
-            "type default model, then the parent agent's current model."
-        ),
+        description="Optional model override."
     )
     resume: str | None = Field(
         default=None,
-        description="Optional agent ID to resume instead of creating a new instance.",
+        description="Agent ID to resume."
     )
     run_in_background: bool = Field(
         default=False,
-        description=(
-            "Whether to run the agent in the background. Prefer false unless the task can "
-            "continue independently and there is a clear benefit to returning control before "
-            "the result is needed."
-        ),
+        description="Run in background."
     )
     timeout: int | None = Field(
         default=None,
-        description=(
-            "Timeout in seconds for the agent task. "
-            "Foreground: no default timeout (runs until completion), max 3600s (1hr). "
-            "Background: default from config (15min), max 3600s (1hr). "
-            "The agent is stopped if it exceeds this limit."
-        ),
+        description="Timeout in seconds (30–3600).",
         ge=30,
         le=MAX_BACKGROUND_TIMEOUT,
     )

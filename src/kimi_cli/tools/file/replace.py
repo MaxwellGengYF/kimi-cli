@@ -20,23 +20,17 @@ _BASE_DESCRIPTION = load_desc(Path(__file__).parent / "replace.md")
 
 
 class Edit(BaseModel):
-    old: str = Field(description="The old string to replace. Can be multi-line.")
-    new: str = Field(description="The new string to replace with. Can be multi-line.")
-    replace_all: bool = Field(description="Whether to replace all occurrences.", default=False)
+    old: str = Field(description="String to replace.")
+    new: str = Field(description="Replacement string.")
+    replace_all: bool = Field(description="Replace all occurrences.", default=False)
 
 
 class Params(BaseModel):
     path: str = Field(
-        description=(
-            "The path to the file to edit. Absolute paths are required when editing files "
-            "outside the working directory."
-        )
+        description="File path. Absolute path required outside working directory."
     )
     edit: Edit | list[Edit] = Field(
-        description=(
-            "The edit(s) to apply to the file. "
-            "You can provide a single edit or a list of edits here."
-        )
+        description="One or more edits."
     )
 
 

@@ -1,30 +1,9 @@
-Use this tool proactively when you're about to start a non-trivial implementation task.
-Getting user sign-off on your approach before writing code prevents wasted effort.
+Use before non-trivial tasks to get user sign-off.
 
-Use it when ANY of these conditions apply:
+**Use when:** new features, multiple approaches, significant changes, architecture decisions, multi-file work, unclear requirements, or user preferences matter.
 
-1. New Feature Implementation — e.g. "Add a caching layer to the API"
-2. Multiple Valid Approaches — e.g. "Optimize database queries" (indexing vs rewrite vs caching)
-3. Code Modifications — e.g. "Refactor auth module to support OAuth"
-4. Architectural Decisions — e.g. "Add WebSocket support"
-5. Multi-File Changes — involves more than 2-3 files
-6. Unclear Requirements — need exploration to understand scope
-7. User Preferences Matter — if you'd use AskUserQuestion to clarify approach, use EnterPlanMode instead
+**Yolo mode:** only if the user explicitly asks for planning or there is exceptional architectural ambiguity.
 
-Yolo mode note:
-- Yolo mode users chose continuous execution.
-- In yolo mode, use EnterPlanMode only when the user explicitly asks for planning or when
-  there is exceptional architectural ambiguity that requires user input before proceeding.
+**Skip for:** trivial fixes, very specific instructions, or pure research.
 
-When NOT to use:
-- Single-line or few-line fixes (typos, obvious bugs, small tweaks)
-- User gave very specific, detailed instructions
-- Pure research/exploration tasks
-
-## What Happens in Plan Mode
-In plan mode, you will:
-1. Identify 2-3 key questions about the codebase that are critical to your plan. If you are not confident about the codebase structure or relevant code paths, use `Agent(subagent_type="explore")` to investigate these questions first — this is strongly recommended for non-trivial tasks.
-2. Explore the codebase using Glob, Grep, ReadFile (read-only) for any remaining quick lookups
-3. Design an implementation approach based on your findings
-4. Write your plan to a plan file
-5. Present your plan to the user via ExitPlanMode for approval
+**Process:** identify key questions, lookup codebase, design approach, write plan, present for approval.

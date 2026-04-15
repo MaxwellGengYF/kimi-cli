@@ -34,14 +34,11 @@ class PlanOption(BaseModel):
     """A selectable approach/option within the plan."""
 
     label: str = Field(
-        description=(
-            "Short name for this option (1-8 words). "
-            "Append '(Recommended)' if you recommend this option."
-        ),
+        description="1-8 word label. Append '(Recommended)' if applicable.",
     )
     description: str = Field(
         default="",
-        description="Brief summary of this approach and its trade-offs.",
+        description="Approach summary and trade-offs.",
     )
 
     @field_validator("label")
@@ -59,12 +56,7 @@ class Params(BaseModel):
     options: list[PlanOption] | None = Field(
         default=None,
         max_length=3,
-        description=(
-            "When the plan contains multiple alternative approaches, list them here "
-            "so the user can choose which one to execute. 2-3 options. "
-            "Each option represents a distinct approach from the plan. "
-            "Do not use 'Reject', 'Revise', 'Approve', or 'Reject and Exit' as labels."
-        ),
+        description="2-3 alternatives. Avoid reserved labels: Reject, Revise, Approve, Reject and Exit.",
     )
 
     @field_validator("options")
@@ -166,11 +158,11 @@ class ExitPlanMode(CallableTool2[Params]):
         _reject_options = [
             QuestionOption(
                 label="Reject",
-                description="Reject and stay in plan mode",
+                description="Keep planning",
             ),
             QuestionOption(
                 label="Reject and Exit",
-                description="Reject and exit plan mode",
+                description="Exit plan mode",
             ),
         ]
 
@@ -185,7 +177,7 @@ class ExitPlanMode(CallableTool2[Params]):
             question_options = [
                 QuestionOption(
                     label="Approve",
-                    description="Exit plan mode and start execution",
+                    description="Start execution",
                 ),
                 *_reject_options,
             ]
@@ -202,7 +194,7 @@ class ExitPlanMode(CallableTool2[Params]):
                     header="Plan",
                     options=question_options,
                     other_label="Revise",
-                    other_description="Stay in plan mode and provide feedback",
+                    other_description="Send feedback",
                 )
             ],
         )

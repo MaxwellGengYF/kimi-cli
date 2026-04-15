@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Callable
 
 import pydantic
 from jinja2 import Environment as JinjaEnvironment
@@ -56,7 +56,7 @@ class BuiltinSystemPromptArgs:
     """The merged content of AGENTS.md files (from project root to work_dir)."""
     KIMI_SKILLS: str
     """Formatted information about available skills."""
-    KIMI_ADDITIONAL_DIRS_INFO: str
+    KIMI_ADDITIONAL_DIRS_INFO: str    
     """Formatted information about additional directories in the workspace."""
     KIMI_OS: str
     """The operating system kind, e.g. 'Windows', 'macOS', 'Linux'."""
@@ -249,8 +249,8 @@ class Runtime:
         skills_formatted = "\n".join(
             (
                 f"- {skill.name}\n"
-                f"  - Path: {skill.skill_md_file}\n"
-                f"  - Description: {skill.description}"
+                f"- Path: {skill.skill_md_file}\n"
+                f"- Description: {skill.description}" if skill.description else ''
             )
             for skill in skills
         )
@@ -307,7 +307,6 @@ class Runtime:
             session.context_file.parent / "notifications",
             config.notifications,
         )
-
         return Runtime(
             config=config,
             oauth=oauth,
@@ -318,7 +317,7 @@ class Runtime:
                 KIMI_WORK_DIR=session.work_dir,
                 KIMI_WORK_DIR_LS=ls_output,
                 KIMI_AGENTS_MD=agents_md or "",
-                KIMI_SKILLS=skills_formatted or "No skills found.",
+                KIMI_SKILLS=skills_formatted or '',
                 KIMI_ADDITIONAL_DIRS_INFO=additional_dirs_info,
                 KIMI_OS=environment.os_kind,
                 KIMI_SHELL=f"{environment.shell_name} (`{environment.shell_path}`)",
@@ -396,6 +395,9 @@ async def load_agent(
     *,
     mcp_configs: list[MCPConfig] | list[dict[str, Any]],
     start_mcp_loading: bool = True,
+    # record failed tool-call
+    tool_call_failed_list: list[tuple[str, str, str, str]]  | None = None,
+    custom_system_prompt : Callable[[BuiltinSystemPromptArgs], str] | None = None, # Add by maxwell
 ) -> Agent:
     """
     Load agent from specification file.
@@ -411,12 +413,14 @@ async def load_agent(
     """
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
-
-    system_prompt = _load_system_prompt(
-        agent_spec.system_prompt_path,
-        agent_spec.system_prompt_args,
-        runtime.builtin_args,
-    )
+    if custom_system_prompt is not None:
+        system_prompt: str = custom_system_prompt(runtime.builtin_args)
+    else:
+        system_prompt = _load_system_prompt(
+            agent_spec.system_prompt_path,
+            agent_spec.system_prompt_args,
+            runtime.builtin_args,
+        )
 
     # Register built-in subagent types before loading tools because some tools render
     # descriptions from the labor market on initialization.
@@ -441,7 +445,7 @@ async def load_agent(
             )
         )
 
-    toolset = KimiToolset()
+    toolset = KimiToolset(tool_call_failed_list) # Add by maxwell
     tool_deps = {
         KimiToolset: toolset,
         Runtime: runtime,

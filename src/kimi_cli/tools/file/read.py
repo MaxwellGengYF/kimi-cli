@@ -20,27 +20,17 @@ MAX_BYTES = 100 << 10  # 100KB
 
 class Params(BaseModel):
     path: str = Field(
-        description=(
-            "The path to the file to read. Absolute paths are required when reading files "
-            "outside the working directory."
-        )
+        description="File path. Absolute for files outside working directory."
     )
     line_offset: int = Field(
         description=(
-            "The line number to start reading from. "
-            "By default read from the beginning of the file. "
-            "Set this when the file is too large to read at once. "
-            "Negative values read from the end of the file (e.g. -100 reads the last 100 lines). "
-            f"The absolute value of negative offset cannot exceed {MAX_LINES}."
+            "Start line, 1-based. Negative reads from end. "
+            f"Max abs {MAX_LINES}."
         ),
         default=1,
     )
     n_lines: int = Field(
-        description=(
-            "The number of lines to read. "
-            f"By default read up to {MAX_LINES} lines, which is the max allowed value. "
-            "Set this value when the file is too large to read at once."
-        ),
+        description=f"Lines to read, max {MAX_LINES}.",
         default=MAX_LINES,
         ge=1,
     )

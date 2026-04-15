@@ -1,5 +1,1 @@
-Write content to a file.
-
-**Tips:**
-- When `mode` is not specified, it defaults to `overwrite`. Always write with caution.
-- When the content to write is too long (e.g. > 100 lines), use this tool multiple times instead of a single call. Use `overwrite` mode at the first time, then use `append` mode after the first write.
+Write content to files. Defaults to `overwrite`—use caution. For content over 100 lines, split into multiple calls; use `append` after the first write.

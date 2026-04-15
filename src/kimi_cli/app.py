@@ -20,7 +20,7 @@ from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_displ
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import run_soul
-from kimi_cli.soul.agent import Runtime, load_agent
+from kimi_cli.soul.agent import Runtime, load_agent, BuiltinSystemPromptArgs
 from kimi_cli.soul.context import Context
 from kimi_cli.soul.kimisoul import KimiSoul
 from kimi_cli.utils.aioqueue import QueueShutDown
@@ -109,6 +109,8 @@ class KimiCLI:
         max_ralph_iterations: int | None = None,
         startup_progress: Callable[[str], None] | None = None,
         defer_mcp_loading: bool = False,
+        tool_call_failed_list: list[tuple[str, str, str, str]]  | None = None, # Add by maxwell
+        custom_system_prompt : Callable[[BuiltinSystemPromptArgs], str] | None = None, # Add by maxwell
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -244,6 +246,8 @@ class KimiCLI:
             runtime,
             mcp_configs=mcp_configs or [],
             start_mcp_loading=not defer_mcp_loading,
+            tool_call_failed_list=tool_call_failed_list, # Add by maxwell
+            custom_system_prompt=custom_system_prompt, # Add by maxwell
         )
 
         if startup_progress is not None:

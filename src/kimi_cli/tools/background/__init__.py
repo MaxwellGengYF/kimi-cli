@@ -109,37 +109,37 @@ def _format_task_output(
 
 
 class TaskOutputParams(BaseModel):
-    task_id: str = Field(description="The background task ID to inspect.")
+    task_id: str = Field(description="Task ID.")
     block: bool = Field(
         default=False,
-        description="Whether to wait for the task to finish before returning.",
+        description="Wait for task completion.",
     )
     timeout: int = Field(
         default=30,
         ge=0,
         le=3600,
-        description="Maximum number of seconds to wait when block=true.",
+        description="Wait timeout in seconds.",
     )
 
 
 class TaskStopParams(BaseModel):
-    task_id: str = Field(description="The background task ID to stop.")
+    task_id: str = Field(description="Task ID.")
     reason: str = Field(
         default="Stopped by TaskStop",
-        description="Short reason recorded when the task is stopped.",
+        description="Stop reason.",
     )
 
 
 class TaskListParams(BaseModel):
     active_only: bool = Field(
         default=True,
-        description="Whether to list only non-terminal background tasks.",
+        description="Only active tasks.",
     )
     limit: int = Field(
         default=20,
         ge=1,
         le=100,
-        description="Maximum number of tasks to return.",
+        description="Result limit.",
     )
 
 

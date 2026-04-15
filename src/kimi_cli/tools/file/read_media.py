@@ -40,10 +40,7 @@ def _extract_image_size(data: bytes) -> tuple[int, int] | None:
 
 class Params(BaseModel):
     path: str = Field(
-        description=(
-            "The path to the file to read. Absolute paths are required when reading files "
-            "outside the working directory."
-        )
+        description="Media path. Absolute required outside work dir."
     )
 
 

@@ -11,7 +11,7 @@ NAME = "SendDMail"
 
 class SendDMail(CallableTool2[DMail]):
     name: str = NAME
-    description: str = load_desc(Path(__file__).parent / "dmail.md")
+    description: str = "Send a message to your past self at a checkpoint. Context-only; no filesystem changes."
     params: type[DMail] = DMail
 
     def __init__(self, denwa_renji: DenwaRenji) -> None:

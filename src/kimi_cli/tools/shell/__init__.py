@@ -23,25 +23,20 @@ MAX_BACKGROUND_TIMEOUT = 24 * 60 * 60
 
 
 class Params(BaseModel):
-    command: str = Field(description="The command to execute.")
+    command: str = Field(description="Command to execute.")
     timeout: int = Field(
-        description=(
-            "The timeout in seconds for the command to execute. "
-            "If the command takes longer than this, it will be killed."
-        ),
+        description="Timeout in seconds.",
         default=60,
         ge=1,
         le=MAX_BACKGROUND_TIMEOUT,
     )
     run_in_background: bool = Field(
         default=False,
-        description="Whether to run the command as a background task.",
+        description="Run as background task.",
     )
     description: str = Field(
         default="",
-        description=(
-            "A short description for the background task. Required when run_in_background=true."
-        ),
+        description="Background task description. Required for background tasks.",
     )
 
     @model_validator(mode="after")

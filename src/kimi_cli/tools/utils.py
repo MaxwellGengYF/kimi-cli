@@ -16,7 +16,7 @@ class _KeepPlaceholderUndefined(Undefined):
 
 
 def load_desc(path: Path, context: dict[str, object] | None = None) -> str:
-    """Load a tool description from a file, rendered via Jinja2."""
+    """Load a tool desc from a file via Jinja2."""
     description = path.read_text(encoding="utf-8")
     env = Environment(
         keep_trailing_newline=True,
@@ -144,7 +144,7 @@ class ToolResultBuilder:
         final_message = message
         if final_message and not final_message.endswith("."):
             final_message += "."
-        truncation_msg = "Output is truncated to fit in the message."
+        truncation_msg = "Output truncated."
         if self._truncation_happened:
             if final_message:
                 final_message += f" {truncation_msg}"
@@ -164,7 +164,7 @@ class ToolResultBuilder:
 
         final_message = message
         if self._truncation_happened:
-            truncation_msg = "Output is truncated to fit in the message."
+            truncation_msg = "Output truncated."
             if final_message:
                 final_message += f" {truncation_msg}"
             else:
@@ -191,8 +191,7 @@ class ToolRejectedError(ToolError):
         super().__init__(
             message=message
             or (
-                "The tool call is rejected by the user. "
-                "Stop what you are doing and wait for the user to tell you how to proceed."
+                "Tool call rejected by user. Stop and wait for instructions."
             ),
             brief=brief,
         )

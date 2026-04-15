@@ -28,117 +28,71 @@ from kimi_cli.utils.sensitive import is_sensitive_file, sensitive_file_warning
 
 
 class Params(BaseModel):
-    pattern: str = Field(
-        description="The regular expression pattern to search for in file contents"
-    )
+    pattern: str = Field(description="Regex pattern.")
     path: str = Field(
-        description=(
-            "File or directory to search in. Defaults to current working directory. "
-            "If specified, it must be an absolute path."
-        ),
+        description="Search target directory or file.",
         default=".",
     )
     glob: str | None = Field(
-        description=(
-            "Glob pattern to filter files (e.g. `*.js`, `*.{ts,tsx}`). No filter by default."
-        ),
+        description="Glob filter.",
         default=None,
     )
     output_mode: str = Field(
-        description=(
-            "`content`: Show matching lines (supports `-B`, `-A`, `-C`, `-n`, `head_limit`); "
-            "`files_with_matches`: Show file paths (supports `head_limit`); "
-            "`count_matches`: Show total number of matches. "
-            "Defaults to `files_with_matches`."
-        ),
+        description="Output format.",
         default="files_with_matches",
     )
     before_context: int | None = Field(
         alias="-B",
-        description=(
-            "Number of lines to show before each match (the `-B` option). "
-            "Requires `output_mode` to be `content`."
-        ),
+        description="Lines before match (content mode only).",
         default=None,
     )
     after_context: int | None = Field(
         alias="-A",
-        description=(
-            "Number of lines to show after each match (the `-A` option). "
-            "Requires `output_mode` to be `content`."
-        ),
+        description="Lines after match (content mode only).",
         default=None,
     )
     context: int | None = Field(
         alias="-C",
-        description=(
-            "Number of lines to show before and after each match (the `-C` option). "
-            "Requires `output_mode` to be `content`."
-        ),
+        description="Lines around match (content mode only).",
         default=None,
     )
     line_number: bool = Field(
         alias="-n",
-        description=(
-            "Show line numbers in output (the `-n` option). "
-            "Requires `output_mode` to be `content`. Defaults to true."
-        ),
+        description="Show line numbers (content mode only).",
         default=True,
     )
     ignore_case: bool = Field(
         alias="-i",
-        description="Case insensitive search (the `-i` option).",
+        description="Case-insensitive search.",
         default=False,
     )
     type: str | None = Field(
-        description=(
-            "File type to search. Examples: py, rust, js, ts, go, java, etc. "
-            "More efficient than `glob` for standard file types."
-        ),
+        description="File type filter.",
         default=None,
     )
     head_limit: int | None = Field(
-        description=(
-            "Limit output to first N lines/entries, equivalent to `| head -N`. "
-            "Works across all output modes: content (limits output lines), "
-            "files_with_matches (limits file paths), count_matches (limits count entries). "
-            "Defaults to 250. "
-            "Pass 0 for unlimited (use sparingly — large result sets waste context)."
-        ),
+        description="Max results (0 = unlimited).",
         default=250,
         ge=0,
     )
     offset: int = Field(
-        description=(
-            "Skip first N lines/entries before applying head_limit, "
-            "equivalent to `| tail -n +N | head -N`. "
-            "Works across all output modes. Defaults to 0."
-        ),
+        description="Skip first N results.",
         default=0,
         ge=0,
     )
     multiline: bool = Field(
-        description=(
-            "Enable multiline mode where `.` matches newlines and patterns can span "
-            "lines (the `-U` and `--multiline-dotall` options). "
-            "By default, multiline mode is disabled."
-        ),
+        description="Multiline regex mode.",
         default=False,
     )
     include_ignored: bool = Field(
-        description=(
-            "Include files that are ignored by `.gitignore`, `.ignore`, and other ignore "
-            "rules. Useful for searching gitignored artifacts such as build outputs "
-            "(e.g. `dist/`, `build/`) or `node_modules`. Sensitive files (like `.env`) "
-            "remain filtered by the sensitive-file protection layer. Defaults to false."
-        ),
+        description="Include .gitignore files.",
         default=False,
     )
 
 
 RG_VERSION = "15.0.0"
 RG_BASE_URL = "http://cdn.kimi.com/binaries/kimi-cli/rg"
-RG_TIMEOUT = 20  # seconds
+RG_TIMEOUT = 60  # seconds
 RG_MAX_BUFFER = 20_000_000  # 20MB stdout/stderr buffer limit
 RG_KILL_GRACE = 5  # seconds: SIGTERM → SIGKILL
 _RG_DOWNLOAD_LOCK = asyncio.Lock()

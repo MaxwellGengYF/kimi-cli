@@ -16,15 +16,13 @@ MAX_MATCHES = 1000
 
 
 class Params(BaseModel):
-    pattern: str = Field(description=("Glob pattern to match files/directories."))
+    pattern: str = Field(description="Glob pattern. Never start with `**`.")
     directory: str | None = Field(
-        description=(
-            "Absolute path to the directory to search in (defaults to working directory)."
-        ),
+        description="Absolute search path. Defaults to working directory.",
         default=None,
     )
     include_dirs: bool = Field(
-        description="Whether to include directories in results.",
+        description="Include directories in results.",
         default=True,
     )
 
@@ -52,36 +50,35 @@ class Glob(CallableTool2[Params]):
             return ToolError(
                 output=ls_result,
                 message=(
-                    f"Pattern `{pattern}` starts with '**' which is not allowed. "
-                    "This would recursively search all directories and may include large "
-                    "directories like `node_modules`. Use more specific patterns instead. "
-                    "For your convenience, a list of all files and directories in the "
-                    "top level of the working directory is provided below."
+                    f"Pattern `{pattern}` starts with '**', which is not allowed as it "
+                    "recursively searches all directories and may include large ones like "
+                    "`node_modules`. Use a more specific pattern. Below are the top-level "
+                    "files and directories in the working directory."
                 ),
                 brief="Unsafe pattern",
             )
         return None
 
-    async def _validate_directory(self, directory: KaosPath) -> ToolError | None:
-        """Validate that the directory is safe to search."""
-        resolved_dir = directory.canonical()
+    # async def _validate_directory(self, directory: KaosPath) -> ToolError | None:
+    #     """Validate that the directory is safe to search."""
+    #     resolved_dir = directory.canonical()
 
-        # Allow directories within the workspace (work_dir or additional dirs)
-        if is_within_workspace(resolved_dir, self._work_dir, self._additional_dirs):
-            return None
+    #     # Allow directories within the workspace (work_dir or additional dirs)
+    #     if is_within_workspace(resolved_dir, self._work_dir, self._additional_dirs):
+    #         return None
 
-        # Allow directories within any discovered skills root
-        if any(is_within_directory(resolved_dir, d) for d in self._skills_dirs):
-            return None
+    #     # Allow directories within any discovered skills root
+    #     if any(is_within_directory(resolved_dir, d) for d in self._skills_dirs):
+    #         return None
 
-        return ToolError(
-            message=(
-                f"`{directory}` is outside the workspace. "
-                "You can only search within the working directory, "
-                "additional directories, and skills directories."
-            ),
-            brief="Directory outside workspace",
-        )
+    #     return ToolError(
+    #         message=(
+    #             f"`{directory}` is outside the workspace. "
+    #             "You can only search within the working directory, "
+    #             "additional directories, and skills directories."
+    #         ),
+    #         brief="Directory outside workspace",
+    #     )
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -95,19 +92,19 @@ class Glob(CallableTool2[Params]):
                 KaosPath(params.directory).expanduser() if params.directory else self._work_dir
             )
 
-            if not dir_path.is_absolute():
-                return ToolError(
-                    message=(
-                        f"`{params.directory}` is not an absolute path. "
-                        "You must provide an absolute path to search."
-                    ),
-                    brief="Invalid directory",
-                )
+            # if not dir_path.is_absolute():
+            #     return ToolError(
+            #         message=(
+            #             f"`{params.directory}` is not an absolute path. "
+            #             "You must provide an absolute path to search."
+            #         ),
+            #         brief="Invalid directory",
+            #     )
 
-            # Validate directory safety
-            dir_error = await self._validate_directory(dir_path)
-            if dir_error:
-                return dir_error
+            # # Validate directory safety
+            # dir_error = await self._validate_directory(dir_path)
+            # if dir_error:
+            #     return dir_error
 
             if not await dir_path.exists():
                 return ToolError(

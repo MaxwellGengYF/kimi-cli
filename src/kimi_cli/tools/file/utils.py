@@ -15,7 +15,7 @@ _EXTRA_MIME_TYPES = {
     ".m4v": "video/x-m4v",
     ".3gp": "video/3gpp",
     ".3g2": "video/3gpp2",
-    # TypeScript files: override mimetypes default (video/mp2t for MPEG Transport Stream)
+    # Override mimetypes default (video/mp2t) for TypeScript.
     ".ts": "text/typescript",
     ".tsx": "text/typescript",
     ".mts": "text/typescript",
@@ -246,7 +246,7 @@ def detect_file_type(path: str | PurePath, header: bytes | None = None) -> FileT
             if media_hint and sniffed.kind != media_hint.kind:
                 return FileType(kind="unknown", mime_type="")
             return sniffed
-        # NUL bytes are a strong signal of binary content.
+        # NUL bytes indicate binary content.
         if b"\x00" in header:
             return FileType(kind="unknown", mime_type="")
 
