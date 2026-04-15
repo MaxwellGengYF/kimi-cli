@@ -24,31 +24,6 @@ _BASE_DESCRIPTION = (
     "For content over 100 lines, split into multiple calls; use `append` after the first write."
 )
 
-
-def _message_may_too_long(message: str) -> str:
-    """Save a long message to a temp file if it exceeds the character limit.
-
-    Args:
-        message: The message to check and potentially save to a temp file.
-
-    Returns:
-        Path to the temp file if the message was saved, None otherwise.
-    """
-    LIMITATION = 65536
-    if message and len(message) > LIMITATION:
-        fd, tmp_path = tempfile.mkstemp(suffix=".txt", prefix="kimi-msg-")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(message)
-            return str(Path(tmp_path).resolve())
-        except Exception:
-            # Clean up the temp file if writing fails
-            with contextlib.suppress(OSError):
-                os.unlink(tmp_path)
-            raise
-    return message
-
-
 class Params(BaseModel):
     path: str = Field(
         description="File path. Absolute paths required outside the working directory."
@@ -197,7 +172,6 @@ class WriteFile(CallableTool2[Params]):
             elif file_path_str.lower().endswith(".xml"):
                 fmt_error = check_xml(file_path_str)
             if fmt_error:
-                fmt_error = _message_may_too_long(fmt_error) # log may-be too long, use temp-file cache
                 return ToolError(
                     message=f"File successfully {action}, but format validation failed: {fmt_error}",
                     brief="Format validation failed",
