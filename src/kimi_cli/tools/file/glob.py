@@ -43,21 +43,21 @@ class Glob(CallableTool2[Params]):
         self._additional_dirs = runtime.additional_dirs
         self._skills_dirs = runtime.skills_dirs
 
-    async def _validate_pattern(self, pattern: str) -> ToolError | None:
-        """Validate that the pattern is safe to use."""
-        if pattern.startswith("**"):
-            ls_result = await list_directory(self._work_dir)
-            return ToolError(
-                output=ls_result,
-                message=(
-                    f"Pattern `{pattern}` starts with '**', which is not allowed as it "
-                    "recursively searches all directories and may include large ones like "
-                    "`node_modules`. Use a more specific pattern. Below are the top-level "
-                    "files and directories in the working directory."
-                ),
-                brief="Unsafe pattern",
-            )
-        return None
+    # async def _validate_pattern(self, pattern: str) -> ToolError | None:
+    #     """Validate that the pattern is safe to use."""
+    #     if pattern.startswith("**"):
+    #         ls_result = await list_directory(self._work_dir)
+    #         return ToolError(
+    #             output=ls_result,
+    #             message=(
+    #                 f"Pattern `{pattern}` starts with '**', which is not allowed as it "
+    #                 "recursively searches all directories and may include large ones like "
+    #                 "`node_modules`. Use a more specific pattern. Below are the top-level "
+    #                 "files and directories in the working directory."
+    #             ),
+    #             brief="Unsafe pattern",
+    #         )
+    #     return None
 
     # async def _validate_directory(self, directory: KaosPath) -> ToolError | None:
     #     """Validate that the directory is safe to search."""
@@ -84,9 +84,9 @@ class Glob(CallableTool2[Params]):
     async def __call__(self, params: Params) -> ToolReturnValue:
         try:
             # Validate pattern safety
-            pattern_error = await self._validate_pattern(params.pattern)
-            if pattern_error:
-                return pattern_error
+            # pattern_error = await self._validate_pattern(params.pattern)
+            # if pattern_error:
+            #     return pattern_error
 
             dir_path = (
                 KaosPath(params.directory).expanduser() if params.directory else self._work_dir

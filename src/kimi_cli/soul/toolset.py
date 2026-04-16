@@ -247,7 +247,7 @@ class KimiToolset:
                         text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
                         print(text)
                         ret = await tool.call(arguments)
-                        if type(ret.output) == str and len(ret.output) > 65536:   # Add by Maxwell: process large size
+                        if type(ret.output) == str and len(ret.output) > 16384:   # Add by Maxwell: process large size
                             temp_file = _export_to_temp_file(ret.output)
                             ret.output = f'Output too large, exported to `{temp_file}`'
                         if not ret.is_error:
