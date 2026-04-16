@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import importlib
 import inspect
-import json
+import demjson3
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -63,7 +63,7 @@ _temp_idx = 0
 
 _temp_folder = Path.home() / '.kimi' / 'logs'
 
-def _export_to_temp_file(content: str, ext:str='.log') -> tuple[str, bool]:
+def _export_to_temp_file(content: str, ext:str='.log') -> str:
     global _temp_idx
     """Export content to a temporary file and return the file path."""
     id = _temp_idx
@@ -163,8 +163,8 @@ class KimiToolset:
             tool = self._tool_dict[tool_call.function.name]
 
             try:
-                arguments: JsonType = json.loads(tool_call.function.arguments or "{}", strict=False)
-            except json.JSONDecodeError as e:
+                arguments: JsonType = demjson3.decode(tool_call.function.arguments or "{}", encoding='utf-8', strict=False)
+            except demjson3.JSONDecodeError as e:
                 logger.warning(
                     "Tool call JSON parse error: {tool_name} (call_id={call_id}): {error}",
                     tool_name=tool_call.function.name,
@@ -247,7 +247,7 @@ class KimiToolset:
                         text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
                         print(text)
                         ret = await tool.call(arguments)
-                        if ret.output and len(ret.output) > 65536:   # Add by Maxwell: process large size
+                        if type(ret.output) == str and len(ret.output) > 65536:   # Add by Maxwell: process large size
                             temp_file = _export_to_temp_file(ret.output)
                             ret.output = f'Output too large, exported to `{temp_file}`'
                         if not ret.is_error:

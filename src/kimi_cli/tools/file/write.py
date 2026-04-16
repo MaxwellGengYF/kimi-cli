@@ -1,6 +1,5 @@
-import contextlib
-import os
-import tempfile
+import json
+import demjson3
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, override
@@ -24,6 +23,7 @@ _BASE_DESCRIPTION = (
     "For content over 100 lines, split into multiple calls; use `append` after the first write."
 )
 
+
 class Params(BaseModel):
     path: str = Field(
         description="File path. Absolute paths required outside the working directory."
@@ -32,6 +32,10 @@ class Params(BaseModel):
     mode: Literal["overwrite", "append"] = Field(
         description="Write mode: overwrite or append.",
         default="overwrite",
+    )
+    fix_foramt: bool = Field(
+        default=True,
+        description='Auto fix file format.'
     )
 
 
@@ -60,7 +64,8 @@ class WriteFile(CallableTool2[Params]):
         resolved_path = path.canonical()
 
         if (
-            not is_within_workspace(resolved_path, self._work_dir, self._additional_dirs)
+            not is_within_workspace(
+                resolved_path, self._work_dir, self._additional_dirs)
             and not path.is_absolute()
         ):
             return ToolError(
@@ -127,7 +132,8 @@ class WriteFile(CallableTool2[Params]):
                 old_text = await p.read_text(errors="replace")
 
             new_text = (
-                params.content if params.mode == "overwrite" else (old_text or "") + params.content
+                params.content if params.mode == "overwrite" else (
+                    old_text or "") + params.content
             )
             diff_blocks: list[DisplayBlock] = await build_diff_blocks(
                 str(p),
@@ -167,25 +173,39 @@ class WriteFile(CallableTool2[Params]):
             # Check file format for JSON/XML files
             fmt_error = None
             file_path_str = str(p)
-            if file_path_str.lower().endswith(".json"):
-                fmt_error = check_json(file_path_str)
+            is_json = file_path_str.lower().endswith(".json")
+            if is_json:
+                fmt_error = await check_json(file_path_str)
             elif file_path_str.lower().endswith(".xml"):
-                fmt_error = check_xml(file_path_str)
+                fmt_error = await check_xml(file_path_str)
+            if fmt_error and is_json and params.fix_foramt:
+                try:
+                    current_text:str = await p.read_text(encoding="utf-8")
+                    decoded = demjson3.decode(current_text, encoding='utf-8', strict=False)
+                    fixed_text: str = json.dumps(decoded)
+                    await p.write_text(fixed_text)
+                    fmt_error = None # Dump success, no need to check
+                except demjson3.JSONDecodeError as e:
+                    fmt_error = f"JSON decode error: {str(e)}"
+                except Exception as exc:
+                    fmt_error = f"failed to validate JSON file: {str(exc)}"
             if fmt_error:
                 return ToolError(
-                    message=f"File successfully {action}, but format validation failed: {fmt_error}",
+                    message=f"File successfully {action}, but {fmt_error}",
                     brief="Format validation failed",
                 )
-            
+
             return ToolReturnValue(
                 is_error=False,
                 output="",
-                message=(f"File successfully {action}. Current size: {file_size} bytes."),
+                message=(
+                    f"File successfully {action}. Current size: {file_size} bytes."),
                 display=diff_blocks,
             )
 
         except Exception as e:
-            logger.warning("WriteFile failed: {path}: {error}", path=params.path, error=e)
+            logger.warning(
+                "WriteFile failed: {path}: {error}", path=params.path, error=e)
             return ToolError(
                 message=f"Failed to write to {params.path}. Error: {e}",
                 brief="Failed to write file",

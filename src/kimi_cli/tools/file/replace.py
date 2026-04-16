@@ -1,3 +1,5 @@
+import demjson3
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import override
@@ -32,6 +34,10 @@ class Params(BaseModel):
     )
     edit: Edit | list[Edit] = Field(
         description="One or more edits."
+    )
+    fix_foramt: bool = Field(
+        default=True,
+        description='Auto fix file format.'
     )
 
 
@@ -173,13 +179,25 @@ class StrReplaceFile(CallableTool2[Params]):
                     total_replacements += 1 if edit.old in original_content else 0
             file_path_str = str(p)
             fmt_error = None
-            if file_path_str.lower().endswith(".json"):
-                fmt_error = check_json(file_path_str)
+            is_json = file_path_str.lower().endswith(".json")
+            if is_json:
+                fmt_error = await check_json(file_path_str)
             elif file_path_str.lower().endswith(".xml"):
-                fmt_error = check_xml(file_path_str)
+                fmt_error = await check_xml(file_path_str)
+            if fmt_error and is_json and params.fix_foramt:
+                try:
+                    current_text:str = await p.read_text(encoding="utf-8")
+                    decoded = demjson3.decode(current_text, encoding='utf-8', strict=False)
+                    fixed_text: str = json.dumps(decoded)
+                    await p.write_text(fixed_text)
+                    fmt_error = None # Dump success, no need to check
+                except demjson3.JSONDecodeError as e:
+                    fmt_error = f"JSON decode error: {str(e)}"
+                except Exception as exc:
+                    fmt_error = f"failed to validate JSON file: {str(exc)}"
             if fmt_error:
                 return ToolError(
-                    message=f"File successfully edited, but format validation failed: {fmt_error}",
+                    message=f"File successfully edited, but {fmt_error}",
                     brief="Format validation failed",
                 )
                 
