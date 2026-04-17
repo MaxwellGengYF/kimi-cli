@@ -247,7 +247,7 @@ class KimiToolset:
                         text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
                         print(text)
                         ret = await tool.call(arguments)
-                        MAX_BYTES = 100 << 10  # 100KB
+                        MAX_BYTES = 128 << 10  # 128KB
                         if type(ret.output) == str:
                             len_bytes = len(ret.output.encode("utf-8"))
                             if len_bytes > MAX_BYTES:   # Add by Maxwell: process large size
