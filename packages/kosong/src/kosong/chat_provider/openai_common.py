@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import re
+import ssl
 from collections.abc import Awaitable, Mapping
 from typing import Any, cast
 
@@ -30,7 +31,7 @@ def create_openai_client(
 ) -> AsyncOpenAI:
     kwargs = dict(client_kwargs)
     if "http_client" not in kwargs:
-        kwargs["http_client"] = httpx.AsyncClient(verify=certifi.where())
+        kwargs["http_client"] = httpx.AsyncClient(verify=ssl.create_default_context(cafile=certifi.where()))
     return AsyncOpenAI(api_key=api_key, base_url=base_url, **kwargs)
 
 
@@ -55,7 +56,7 @@ def close_openai_client(client: AsyncOpenAI) -> None:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         if hasattr(result, "close"):
-            result.close()
+            result.close()  # type: ignore[attr-defined]
         return
     loop.create_task(_drain_awaitable(cast(Awaitable[object], result)))
 
