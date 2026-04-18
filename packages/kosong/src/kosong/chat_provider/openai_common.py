@@ -4,6 +4,7 @@ import re
 from collections.abc import Awaitable, Mapping
 from typing import Any, cast
 
+import certifi
 import httpx
 import openai
 from openai import AsyncOpenAI, OpenAIError
@@ -27,7 +28,10 @@ def create_openai_client(
     base_url: str | None,
     client_kwargs: Mapping[str, Any],
 ) -> AsyncOpenAI:
-    return AsyncOpenAI(api_key=api_key, base_url=base_url, **dict(client_kwargs))
+    kwargs = dict(client_kwargs)
+    if "http_client" not in kwargs:
+        kwargs["http_client"] = httpx.AsyncClient(verify=certifi.where())
+    return AsyncOpenAI(api_key=api_key, base_url=base_url, **kwargs)
 
 
 async def _drain_awaitable(awaitable: Awaitable[object]) -> None:
@@ -51,7 +55,7 @@ def close_openai_client(client: AsyncOpenAI) -> None:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         if hasattr(result, "close"):
-            result.close()  # type: ignore[attr-defined]
+            result.close()
         return
     loop.create_task(_drain_awaitable(cast(Awaitable[object], result)))
 
