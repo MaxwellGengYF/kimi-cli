@@ -4,6 +4,7 @@ Be cautious that `KaosPath` is not used in this implementation.
 """
 
 import asyncio
+import heapq
 import os
 import platform
 import re
@@ -24,7 +25,7 @@ import kimi_cli
 from kimi_cli.share import get_share_dir
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
-from kimi_cli.utils.logging import logger
+from kimi_cli import logger
 from kimi_cli.utils.sensitive import is_sensitive_file, sensitive_file_warning
 
 
@@ -329,17 +330,26 @@ def _is_eagain(stderr: str) -> bool:
     return "os error 11" in stderr or "Resource temporarily unavailable" in stderr
 
 
-def _strip_path_prefix(output: str, search_base: str) -> str:
+_RG_LINE_RE = re.compile(r"^(.*?)([:\-])(\d+)\2")
+
+
+@lru_cache(maxsize=1024)
+def _is_sensitive_cached(path: str) -> bool:
+    """Cached wrapper for is_sensitive_file to avoid redundant checks."""
+    return is_sensitive_file(path)
+
+
+def _strip_path_prefix(lines: list[str], search_base: str) -> list[str]:
     """Strip search_base prefix from each line to produce relative paths."""
     prefix = search_base.rstrip("/\\")
     prefix_slash = prefix + "/"
     prefix_backslash = prefix + "\\"
-    return "\n".join(
+    return [
         line[len(prefix_slash):] if line.startswith(prefix_slash)
         else line[len(prefix_backslash):] if line.startswith(prefix_backslash)
         else line
-        for line in output.split("\n")
-    )
+        for line in lines
+    ]
 
 
 class Grep(CallableTool2[Params]):
@@ -429,6 +439,11 @@ class Grep(CallableTool2[Params]):
                 )
 
             # --- Post-processing pipeline ---
+            # Single split at pipeline entry; keep as list until final join.
+
+            lines = output.split("\n")
+            if lines and lines[-1] == "":
+                lines.pop()
 
             async def _safe_getmtime(path: str) -> float:
                 try:
@@ -436,30 +451,39 @@ class Grep(CallableTool2[Params]):
                 except (OSError, ValueError):
                     return 0.0
 
+            files_truncated_early = False
+            total_raw_files = 0
+
             # Step 1: mtime sorting (files_with_matches only, skip on timeout)
             if not timed_out and params.output_mode == "files_with_matches":
-                lines = [x for x in output.split("\n") if x.strip()]
+                lines = [ln for ln in lines if ln.strip()]
+                total_raw_files = len(lines)
                 mtimes = await asyncio.gather(*(_safe_getmtime(p) for p in lines))
-                lines = [p for _, p in sorted(zip(mtimes, lines), key=lambda x: x[0], reverse=True)]
-                output = "\n".join(lines)
+
+                k = params.offset + (params.head_limit or 0)
+                if k and len(lines) > k:
+                    lines = [p for _, p in heapq.nlargest(
+                        k, zip(mtimes, lines), key=lambda x: x[0]
+                    )]
+                    files_truncated_early = True
+                else:
+                    lines = [p for _, p in sorted(zip(mtimes, lines), key=lambda x: x[0], reverse=True)]
 
             # Step 2: shorten paths to relative (prefix stripping)
             search_base = os.path.abspath(os.path.expanduser(params.path))
             if os.path.isfile(search_base):
                 search_base = os.path.dirname(search_base)
-            output = _strip_path_prefix(output, search_base)
+            lines = _strip_path_prefix(lines, search_base)
 
             # Step 3: filter sensitive files from output
             # Regex for ripgrep content lines: path:linenum:text (match) or
             # path-linenum-text (context). The separator is `:` or `-` followed
             # by digits then the same separator again.
-            _RG_LINE_RE = re.compile(r"^(.*?)([:\-])(\d+)\2")
 
-            out_lines = output.split("\n")
             filtered_paths: list[str] = []
             kept_lines: list[str] = []
             sensitive_path_set: set[str] = set()
-            for line in out_lines:
+            for line in lines:
                 if params.output_mode == "content":
                     # Match lines: "file.py:10:matched text"
                     # Context lines: "file.py-10-context text"
@@ -477,7 +501,7 @@ class Grep(CallableTool2[Params]):
                     # files_with_matches: pure path per line
                     file_path = line
 
-                if file_path and is_sensitive_file(file_path):
+                if file_path and _is_sensitive_cached(file_path):
                     if file_path not in sensitive_path_set:
                         sensitive_path_set.add(file_path)
                         filtered_paths.append(file_path)
@@ -488,15 +512,12 @@ class Grep(CallableTool2[Params]):
                 # Remove trailing "--" separators left after filtering
                 while kept_lines and kept_lines[-1] == "--":
                     kept_lines.pop()
-                output = "\n".join(kept_lines)
                 warning = sensitive_file_warning(filtered_paths)
                 message = f"{message} {warning}" if message else warning
 
-            # Step 4: count_matches summary (before pagination, on full results)
-            lines = output.split("\n")
-            if lines and lines[-1] == "":
-                lines = lines[:-1]
+            lines = kept_lines
 
+            # Step 4: count_matches summary (before pagination, on full results)
             if params.output_mode == "count_matches":
                 total_matches = 0
                 total_files = 0
@@ -515,20 +536,30 @@ class Grep(CallableTool2[Params]):
 
             # Step 5: offset + head_limit pagination
             if params.offset > 0:
-                lines = lines[params.offset :]
+                lines = lines[params.offset:]
 
             effective_limit = params.head_limit
             if effective_limit and len(lines) > effective_limit:
                 total = len(lines) + params.offset
                 lines = lines[:effective_limit]
-                output = "\n".join(lines)
                 truncation_msg = (
                     f"Results truncated to {effective_limit} lines (total: {total}). "
                     f"Use offset={params.offset + effective_limit} to see more."
                 )
                 message = f"{message} {truncation_msg}" if message else truncation_msg
-            else:
-                output = "\n".join(lines)
+            elif (
+                effective_limit
+                and params.output_mode == "files_with_matches"
+                and files_truncated_early
+                and len(lines) == effective_limit
+            ):
+                truncation_msg = (
+                    f"Results truncated to {effective_limit} lines (total: {total_raw_files}). "
+                    f"Use offset={params.offset + effective_limit} to see more."
+                )
+                message = f"{message} {truncation_msg}" if message else truncation_msg
+
+            output = "\n".join(lines)
 
             if not output and not buffer_truncated:
                 no_match_msg = "No matches found"

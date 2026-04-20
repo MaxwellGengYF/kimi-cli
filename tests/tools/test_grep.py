@@ -755,51 +755,57 @@ def test_build_rg_args_flag_mapping():
 
 def test_strip_path_prefix_posix():
     """Prefix stripping works with POSIX paths (forward slash)."""
-    output = "/home/user/project/src/a.py:42:code\n/home/user/project/src/b.py-41-context\n--\n"
+    output = [
+        "/home/user/project/src/a.py:42:code",
+        "/home/user/project/src/b.py-41-context",
+        "--",
+    ]
     result = _strip_path_prefix(output, "/home/user/project")
-    lines = result.split("\n")
-    assert lines[0] == "src/a.py:42:code"
-    assert lines[1] == "src/b.py-41-context"
-    assert lines[2] == "--"
-    assert lines[3] == ""
+    assert result == [
+        "src/a.py:42:code",
+        "src/b.py-41-context",
+        "--",
+    ]
 
 
 def test_strip_path_prefix_windows(monkeypatch):
     """Prefix stripping works with Windows paths (backslash)."""
     monkeypatch.setattr("kimi_cli.tools.file.grep_local.os.sep", "\\")
 
-    output = "C:\\repo\\src\\a.py:42:code\nC:\\repo\\src\\b.py-41-context\n--\n"
+    output = [
+        "C:\\repo\\src\\a.py:42:code",
+        "C:\\repo\\src\\b.py-41-context",
+        "--",
+    ]
     result = _strip_path_prefix(output, "C:\\repo")
-    lines = result.split("\n")
-    assert lines[0] == "src\\a.py:42:code"
-    assert lines[1] == "src\\b.py-41-context"
-    assert lines[2] == "--"
-    assert lines[3] == ""
+    assert result == [
+        "src\\a.py:42:code",
+        "src\\b.py-41-context",
+        "--",
+    ]
 
 
 def test_strip_path_prefix_no_match():
     """Lines not starting with prefix are kept as-is."""
-    output = "/other/path/file.py\n--\n"
+    output = ["/other/path/file.py", "--"]
     result = _strip_path_prefix(output, "/home/user/project")
-    assert result == "/other/path/file.py\n--\n"
+    assert result == ["/other/path/file.py", "--"]
 
 
 def test_strip_path_prefix_trailing_sep():
     """Trailing separators on search_base are handled correctly."""
-    output = "/tmp/dir/file.py\n"
+    output = ["/tmp/dir/file.py"]
     # With trailing slash
-    assert _strip_path_prefix(output, "/tmp/dir/") == "file.py\n"
+    assert _strip_path_prefix(output, "/tmp/dir/") == ["file.py"]
     # Without trailing slash
-    assert _strip_path_prefix(output, "/tmp/dir") == "file.py\n"
+    assert _strip_path_prefix(output, "/tmp/dir") == ["file.py"]
 
 
 def test_strip_path_prefix_similar_names():
     """search_base=/tmp/a must not match /tmp/abc/file.py."""
-    output = "/tmp/abc/file.py\n/tmp/a/file.py\n"
+    output = ["/tmp/abc/file.py", "/tmp/a/file.py"]
     result = _strip_path_prefix(output, "/tmp/a")
-    lines = result.split("\n")
-    assert lines[0] == "/tmp/abc/file.py"  # NOT stripped
-    assert lines[1] == "file.py"  # stripped
+    assert result == ["/tmp/abc/file.py", "file.py"]  # NOT stripped, stripped
 
 
 # === Tests for include_ignored feature ===
