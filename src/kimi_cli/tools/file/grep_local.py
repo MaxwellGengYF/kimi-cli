@@ -12,6 +12,7 @@ import stat
 import tarfile
 import tempfile
 import zipfile
+from functools import lru_cache
 from pathlib import Path
 from typing import override
 
@@ -102,6 +103,7 @@ def _rg_binary_name() -> str:
     return "rg.exe" if platform.system() == "Windows" else "rg"
 
 
+@lru_cache(maxsize=1)
 def _find_existing_rg(bin_name: str) -> Path | None:
     share_bin = get_share_dir() / "bin" / bin_name
     if share_bin.is_file():
@@ -329,9 +331,14 @@ def _is_eagain(stderr: str) -> bool:
 
 def _strip_path_prefix(output: str, search_base: str) -> str:
     """Strip search_base prefix from each line to produce relative paths."""
-    prefix = search_base.rstrip("/\\") + os.sep
+    prefix = search_base.rstrip("/\\")
+    prefix_slash = prefix + "/"
+    prefix_backslash = prefix + "\\"
     return "\n".join(
-        line[len(prefix) :] if line.startswith(prefix) else line for line in output.split("\n")
+        line[len(prefix_slash):] if line.startswith(prefix_slash)
+        else line[len(prefix_backslash):] if line.startswith(prefix_backslash)
+        else line
+        for line in output.split("\n")
     )
 
 
@@ -423,13 +430,17 @@ class Grep(CallableTool2[Params]):
 
             # --- Post-processing pipeline ---
 
+            async def _safe_getmtime(path: str) -> float:
+                try:
+                    return await asyncio.to_thread(os.path.getmtime, path)
+                except (OSError, ValueError):
+                    return 0.0
+
             # Step 1: mtime sorting (files_with_matches only, skip on timeout)
             if not timed_out and params.output_mode == "files_with_matches":
                 lines = [x for x in output.split("\n") if x.strip()]
-                lines.sort(
-                    key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0,
-                    reverse=True,
-                )
+                mtimes = await asyncio.gather(*(_safe_getmtime(p) for p in lines))
+                lines = [p for _, p in sorted(zip(mtimes, lines), key=lambda x: x[0], reverse=True)]
                 output = "\n".join(lines)
 
             # Step 2: shorten paths to relative (prefix stripping)

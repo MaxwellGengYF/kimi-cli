@@ -259,7 +259,7 @@ async def test_grep_output_truncation(grep_tool: Grep):
 
         assert not result.is_error
         assert isinstance(result.output, str)
-        assert result.message == snapshot("Output is truncated to fit in the message.")
+        assert result.message == snapshot("Output truncated.")
         assert len(result.output) < DEFAULT_MAX_CHARS + 100
 
 
