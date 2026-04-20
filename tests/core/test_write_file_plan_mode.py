@@ -82,7 +82,7 @@ class TestWriteFilePlanMode:
             )
 
         assert isinstance(result, ToolError)
-        assert "only edit the current plan file" in result.message
+        assert "Only the current plan file can be edited" in result.message
         request_mock.assert_not_awaited()
 
     async def test_no_plan_mode_normal_flow(

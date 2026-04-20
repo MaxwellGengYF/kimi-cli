@@ -131,13 +131,14 @@ async def test_write_outside_work_directory_with_prefix(
 
 
 async def test_write_to_nonexistent_directory(write_file_tool: WriteFile, temp_work_dir: KaosPath):
-    """Test writing to a non-existent directory."""
+    """Test writing to a non-existent directory auto-creates parents."""
     file_path = temp_work_dir / "nonexistent" / "file.txt"
 
     result = await write_file_tool(Params(path=str(file_path), content="content"))
 
-    assert result.is_error
-    assert "parent directory does not exist" in result.message
+    assert not result.is_error
+    assert await file_path.exists()
+    assert await file_path.read_text() == "content"
 
 
 async def test_write_with_invalid_mode(write_file_tool: WriteFile, temp_work_dir: KaosPath):

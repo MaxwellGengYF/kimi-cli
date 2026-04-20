@@ -1,5 +1,6 @@
 """Glob tool implementation."""
 
+import asyncio
 from pathlib import Path
 from typing import override
 
@@ -117,26 +118,32 @@ class Glob(CallableTool2[Params]):
                     brief="Invalid directory",
                 )
 
-            # Perform the glob search - users can use ** directly in pattern
+            # Perform the glob search - bounded streaming with inline filtering
             matches: list[KaosPath] = []
-            async for match in dir_path.glob(params.pattern):
-                matches.append(match)
-
-            # Filter out directories if not requested
-            if not params.include_dirs:
-                matches = [p for p in matches if await p.is_file()]
+            truncated = False
+            try:
+                async with asyncio.timeout(10):
+                    async for match in dir_path.glob(params.pattern):
+                        if not params.include_dirs and not await match.is_file():
+                            continue
+                        matches.append(match)
+                        if len(matches) > MAX_MATCHES:
+                            truncated = True
+                            matches.pop()
+                            break
+            except asyncio.TimeoutError:
+                truncated = True
 
             # Sort for consistent output
             matches.sort()
 
-            # Limit matches
-            message = (
-                f"Found {len(matches)} matches for pattern `{params.pattern}`."
-                if len(matches) > 0
-                else f"No matches found for pattern `{params.pattern}`."
-            )
-            if len(matches) > MAX_MATCHES:
-                matches = matches[:MAX_MATCHES]
+            # Build message
+            if len(matches) > 0:
+                message = f"Found {len(matches)} matches for pattern `{params.pattern}`."
+            else:
+                message = f"No matches found for pattern `{params.pattern}`."
+
+            if truncated:
                 message += (
                     f" Only the first {MAX_MATCHES} matches are returned. "
                     "You may want to use a more specific pattern."

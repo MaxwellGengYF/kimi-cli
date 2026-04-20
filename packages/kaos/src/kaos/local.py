@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import os
 from asyncio.subprocess import Process as AsyncioProcess
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Literal
 
@@ -102,11 +103,22 @@ class LocalKaos:
         self, path: StrOrKaosPath, pattern: str, *, case_sensitive: bool = True
     ) -> AsyncGenerator[KaosPath]:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)
-        entries = await asyncio.to_thread(
-            lambda: list(local_path.glob(pattern, case_sensitive=case_sensitive))
-        )
-        for entry in entries:
-            yield KaosPath.unsafe_from_local_path(entry)
+
+        def _glob_batches(
+            path: Path, pattern: str, case_sensitive: bool, chunk_size: int = 256
+        ) -> Generator[list[Path], None, None]:
+            it = path.glob(pattern, case_sensitive=case_sensitive)
+            while True:
+                batch = list(itertools.islice(it, chunk_size))
+                if not batch:
+                    break
+                yield batch
+
+        for batch in await asyncio.to_thread(
+            _glob_batches, local_path, pattern, case_sensitive
+        ):
+            for entry in batch:
+                yield KaosPath.unsafe_from_local_path(entry)
 
     async def readbytes(self, path: StrOrKaosPath, n: int | None = None) -> bytes:
         local_path = path.unsafe_to_local_path() if isinstance(path, KaosPath) else Path(path)

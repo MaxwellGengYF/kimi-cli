@@ -441,7 +441,7 @@ class Grep(CallableTool2[Params]):
             # --- Post-processing pipeline ---
             # Single split at pipeline entry; keep as list until final join.
 
-            lines = output.split("\n")
+            lines = output.splitlines()
             if lines and lines[-1] == "":
                 lines.pop()
 

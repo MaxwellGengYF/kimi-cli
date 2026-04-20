@@ -1,4 +1,3 @@
-from collections import deque
 from pathlib import Path
 from typing import override
 
@@ -160,53 +159,49 @@ class ReadFile(CallableTool2[Params]):
             )
 
     async def _read_forward(self, p: KaosPath, params: Params) -> ToolReturnValue:
-        """Read file from a positive line_offset, counting total lines."""
-        lines: list[str] = []
+        """Read file from a positive line_offset."""
+        lines_with_no: list[str] = []
         n_bytes = 0
         truncated_line_numbers: list[int] = []
         max_lines_reached = False
         max_bytes_reached = False
-        collecting = True  # False once we've collected enough lines
         current_line_no = 0
+        target_lines = min(params.n_lines, MAX_LINES)
+        eof_reached = True
+
         async for line in p.read_lines(errors="replace"):
             current_line_no += 1
-            if not collecting:
-                continue
             if current_line_no < params.line_offset:
                 continue
             truncated = truncate_line(line, MAX_LINE_LENGTH)
             if truncated != line:
                 truncated_line_numbers.append(current_line_no)
-            lines.append(truncated)
-            n_bytes += len(truncated.encode("utf-8"))
-            if len(lines) >= params.n_lines:
-                collecting = False
-            elif len(lines) >= MAX_LINES:
-                max_lines_reached = True
-                collecting = False
-            elif n_bytes >= MAX_BYTES:
+            b_len = len(truncated.encode("utf-8"))
+            lines_with_no.append(f"{current_line_no:6d}\t{truncated}")
+            n_bytes += b_len
+            if len(lines_with_no) >= target_lines:
+                max_lines_reached = target_lines >= MAX_LINES
+                eof_reached = False
+                break
+            if n_bytes >= MAX_BYTES:
                 max_bytes_reached = True
-                collecting = False
+                eof_reached = False
+                break
 
-        total_lines = current_line_no
-
-        # Format output with line numbers like `cat -n`
         start_line = params.line_offset
-        lines_with_no: list[str] = []
-        for line_num, line in zip(range(start_line, start_line + len(lines)), lines, strict=True):
-            lines_with_no.append(f"{line_num:6d}\t{line}")
 
         message = (
-            f"{len(lines)} lines read from file starting from line {start_line}."
-            if len(lines) > 0
+            f"{len(lines_with_no)} lines read from file starting from line {start_line}."
+            if len(lines_with_no) > 0
             else "No lines read from file."
         )
-        message += f" Total lines in file: {total_lines}."
+        if eof_reached:
+            message += f" Total lines in file: {current_line_no}."
         if max_lines_reached:
             message += f" Max {MAX_LINES} lines reached."
         elif max_bytes_reached:
             message += f" Max {MAX_BYTES} bytes reached."
-        elif len(lines) < params.n_lines:
+        elif len(lines_with_no) < params.n_lines:
             message += " End of file reached."
         if truncated_line_numbers:
             message += f" Lines {truncated_line_numbers} were truncated."
@@ -218,61 +213,56 @@ class ReadFile(CallableTool2[Params]):
     async def _read_tail(self, p: KaosPath, params: Params) -> ToolReturnValue:
         """Read file from a negative line_offset (tail mode)."""
         tail_count = abs(params.line_offset)
+        line_limit = min(params.n_lines, MAX_LINES)
 
-        # Use a deque to keep the last `tail_count` lines with their line numbers
-        # Each entry: (line_no, truncated_line, was_truncated)
-        tail_buf: deque[tuple[int, str, bool]] = deque(maxlen=tail_count)
+        # Bounded list keeping the last `tail_count` lines.
+        # Each entry: (line_no, truncated_line, was_truncated, byte_len)
+        tail_buf: list[tuple[int, str, bool, int]] = []
         current_line_no = 0
         async for line in p.read_lines(errors="replace"):
             current_line_no += 1
             truncated = truncate_line(line, MAX_LINE_LENGTH)
-            tail_buf.append((current_line_no, truncated, truncated != line))
+            b_len = len(truncated.encode("utf-8"))
+            tail_buf.append((current_line_no, truncated, truncated != line, b_len))
+            if len(tail_buf) > tail_count:
+                tail_buf.pop(0)
 
         total_lines = current_line_no
 
-        # Step 1: Apply n_lines / MAX_LINES from head of tail_buf.
-        # This preserves the user's requested start position.
-        all_entries = list(tail_buf)
-        line_limit = min(params.n_lines, MAX_LINES)
-        candidates = all_entries[:line_limit]
-        max_lines_reached = len(all_entries) > MAX_LINES and len(candidates) == MAX_LINES
+        # Apply n_lines / MAX_LINES from head of tail_buf.
+        candidates = tail_buf[:line_limit]
+        max_lines_reached = len(tail_buf) > MAX_LINES and len(candidates) == MAX_LINES
 
-        # Step 2: Apply MAX_BYTES — if candidates exceed the byte budget,
-        # reverse-scan to keep the newest (closest to EOF) lines that fit.
-        total_candidate_bytes = sum(len(entry[1].encode("utf-8")) for entry in candidates)
-        if total_candidate_bytes > MAX_BYTES:
-            max_bytes_reached = True
-            kept = 0
-            n_bytes = 0
-            for entry in reversed(candidates):
-                n_bytes += len(entry[1].encode("utf-8"))
-                if n_bytes > MAX_BYTES:
-                    break
-                kept += 1
-            candidates = candidates[len(candidates) - kept :]
+        # Apply MAX_BYTES — reverse-scan to keep the newest lines that fit.
+        if candidates:
+            total_candidate_bytes = sum(entry[3] for entry in candidates)
+            if total_candidate_bytes > MAX_BYTES:
+                max_bytes_reached = True
+                kept = 0
+                n_bytes = 0
+                for entry in reversed(candidates):
+                    n_bytes += entry[3]
+                    if n_bytes > MAX_BYTES:
+                        break
+                    kept += 1
+                candidates = candidates[len(candidates) - kept :]
+            else:
+                max_bytes_reached = False
         else:
             max_bytes_reached = False
 
-        # Step 3: Collect results from candidates
-        lines: list[str] = []
-        line_numbers: list[int] = []
+        # Build output directly.
+        lines_with_no: list[str] = []
         truncated_line_numbers: list[int] = []
-
-        for line_no, truncated, was_truncated in candidates:
+        for line_no, truncated, was_truncated, _ in candidates:
             if was_truncated:
                 truncated_line_numbers.append(line_no)
-            lines.append(truncated)
-            line_numbers.append(line_no)
+            lines_with_no.append(f"{line_no:6d}\t{truncated}")
 
-        # Format output with absolute line numbers
-        lines_with_no: list[str] = []
-        for line_num, line in zip(line_numbers, lines, strict=True):
-            lines_with_no.append(f"{line_num:6d}\t{line}")
-
-        start_line = line_numbers[0] if line_numbers else total_lines + 1
+        start_line = candidates[0][0] if candidates else total_lines + 1
         message = (
-            f"{len(lines)} lines read from file starting from line {start_line}."
-            if len(lines) > 0
+            f"{len(lines_with_no)} lines read from file starting from line {start_line}."
+            if len(lines_with_no) > 0
             else "No lines read from file."
         )
         message += f" Total lines in file: {total_lines}."
@@ -280,7 +270,7 @@ class ReadFile(CallableTool2[Params]):
             message += f" Max {MAX_LINES} lines reached."
         elif max_bytes_reached:
             message += f" Max {MAX_BYTES} bytes reached."
-        elif len(lines) < params.n_lines:
+        elif len(lines_with_no) < params.n_lines:
             message += " End of file reached."
         if truncated_line_numbers:
             message += f" Lines {truncated_line_numbers} were truncated."

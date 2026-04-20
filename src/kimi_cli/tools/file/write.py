@@ -5,17 +5,17 @@ from pathlib import Path
 from typing import Literal, override
 
 from kaos.path import KaosPath
-from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
+from kosong.tooling import CallableTool2, DisplayBlock, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
-from kimi_cli.tools.display import DisplayBlock
+from kimi_cli.tools.display import DiffDisplayBlock
 from kimi_cli.tools.file import FileActions
-from kimi_cli.tools.file.check_fmt import check_json, check_xml
+from kimi_cli.tools.file.check_fmt import check_json_text, check_xml_text
 from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.utils.diff import build_diff_blocks
-from kimi_cli.utils.logging import logger
+from kimi_cli import logger
 from kimi_cli.utils.path import is_within_workspace
 
 _BASE_DESCRIPTION = (
@@ -59,24 +59,30 @@ class WriteFile(CallableTool2[Params]):
         self._plan_mode_checker = checker
         self._plan_file_path_getter = path_getter
 
-    async def _validate_path(self, path: KaosPath) -> ToolError | None:
-        """Validate that the path is safe to write."""
+    async def _validate_path(self, path: KaosPath) -> tuple[ToolError | None, bool]:
+        """Validate that the path is safe to write.
+
+        Returns:
+            A tuple of (error_or_none, is_inside_workspace).
+        """
         resolved_path = path.canonical()
 
-        if (
-            not is_within_workspace(
-                resolved_path, self._work_dir, self._additional_dirs)
-            and not path.is_absolute()
-        ):
-            return ToolError(
-                message=(
-                    f"`{path}` is not an absolute path. "
-                    "You must provide an absolute path to write a file "
-                    "outside the working directory."
+        inside = is_within_workspace(
+            resolved_path, self._work_dir, self._additional_dirs
+        )
+        if not inside and not path.is_absolute():
+            return (
+                ToolError(
+                    message=(
+                        f"`{path}` is not an absolute path. "
+                        "You must provide an absolute path to write a file "
+                        "outside the working directory."
+                    ),
+                    brief="Invalid path",
                 ),
-                brief="Invalid path",
+                False,
             )
-        return None
+        return None, inside
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -91,9 +97,16 @@ class WriteFile(CallableTool2[Params]):
         try:
             p = KaosPath(params.path).expanduser()
 
-            if err := await self._validate_path(p):
+            err, path_is_inside = await self._validate_path(p)
+            if err:
                 return err
             p = p.canonical()
+
+            if await p.is_dir():
+                return ToolError(
+                    message=f"`{p}` is a directory, not a file.",
+                    brief="Path is a directory",
+                )
 
             plan_target = inspect_plan_edit_target(
                 p,
@@ -107,14 +120,13 @@ class WriteFile(CallableTool2[Params]):
             if is_plan_file_write and plan_target.plan_path is not None:
                 plan_target.plan_path.parent.mkdir(parents=True, exist_ok=True)
 
-            if not await p.parent.exists():
-                try:
-                    await p.parent.mkdir(parents=True)
-                except:
-                    return ToolError(
-                        message=f"`{params.path}` parent directory does not exist.",
-                        brief="Parent directory not found",
-                    )
+            try:
+                await p.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                return ToolError(
+                    message=f"Failed to create parent directory for {p}: {e}",
+                    brief="Parent directory not found",
+                )
 
             # Validate mode parameter
             if params.mode not in ["overwrite", "append"]:
@@ -126,26 +138,75 @@ class WriteFile(CallableTool2[Params]):
                     brief="Invalid write mode",
                 )
 
-            file_existed = await p.exists()
-            old_text = None
-            if file_existed:
-                old_text = await p.read_text(errors="replace")
+            old_text = ""
+            file_existed = False
+            try:
+                old_text = await p.read_text(encoding="utf-8", errors="strict")
+                file_existed = True
+            except FileNotFoundError:
+                pass
 
-            new_text = (
-                params.content if params.mode == "overwrite" else (
-                    old_text or "") + params.content
-            )
-            diff_blocks: list[DisplayBlock] = await build_diff_blocks(
-                str(p),
-                old_text or "",
-                new_text,
-            )
+            if params.mode == "overwrite":
+                new_text = params.content
+            else:
+                new_text = old_text + params.content
+
+            # In-memory format validation & fix (before any write)
+            fmt_error = None
+            file_path_str = str(p)
+            is_json = file_path_str.lower().endswith(".json")
+            if is_json:
+                fmt_error = check_json_text(new_text)
+            elif file_path_str.lower().endswith(".xml"):
+                fmt_error = check_xml_text(new_text)
+
+            if fmt_error and is_json and params.fix_foramt:
+                try:
+                    decoded = demjson3.decode(new_text, encoding="utf-8", strict=False)
+                    new_text = json.dumps(decoded)
+                    fmt_error = None
+                except demjson3.JSONDecodeError as e:
+                    fmt_error = f"JSON decode error: {str(e)}"
+                except Exception as exc:
+                    fmt_error = f"failed to validate JSON file: {str(exc)}"
+
+            if fmt_error:
+                return ToolError(
+                    message=f"File content invalid: {fmt_error}",
+                    brief="Format validation failed",
+                )
+
+            # Build diff blocks
+            diff_blocks: list[DisplayBlock]
+            if params.mode == "append" and file_existed:
+                # Fast path: synthetic diff for append
+                old_lines = old_text.splitlines()
+                old_start = max(1, len(old_lines) - 2)
+                old_context = "\n".join(old_lines[old_start - 1 :]) if old_lines else ""
+                new_context = (
+                    (old_context + "\n" if old_context else "") + params.content
+                ).rstrip("\n")
+                diff_blocks = [
+                    DiffDisplayBlock(
+                        path=file_path_str,
+                        old_text=old_context,
+                        new_text=new_context,
+                        old_start=old_start,
+                        new_start=old_start,
+                    )
+                ]
+            else:
+                diff_blocks = await build_diff_blocks(
+                    file_path_str,
+                    old_text,
+                    new_text,
+                )
 
             # Plan file writes are auto-approved; other writes need approval
             if not is_plan_file_write:
                 action = (
                     FileActions.EDIT
-                    if is_within_workspace(p, self._work_dir, self._additional_dirs)
+                    if path_is_inside
                     else FileActions.EDIT_OUTSIDE
                 )
 
@@ -160,52 +221,28 @@ class WriteFile(CallableTool2[Params]):
                     return result.rejection_error()
 
             # Write content to file
-            match params.mode:
-                case "overwrite":
-                    await p.write_text(params.content)
-                case "append":
-                    await p.append_text(params.content)
+            if params.mode == "append" and file_existed:
+                await p.append_text(params.content, encoding="utf-8", errors="strict")
+            else:
+                await p.write_text(new_text, encoding="utf-8", errors="strict")
 
-            # Get file info for success message
-            file_size = (await p.stat()).st_size
-            action = "overwritten" if params.mode == "overwrite" else "appended to"
-
-            # Check file format for JSON/XML files
-            fmt_error = None
-            file_path_str = str(p)
-            is_json = file_path_str.lower().endswith(".json")
-            if is_json:
-                fmt_error = await check_json(file_path_str)
-            elif file_path_str.lower().endswith(".xml"):
-                fmt_error = await check_xml(file_path_str)
-            if fmt_error and is_json and params.fix_foramt:
-                try:
-                    current_text:str = await p.read_text(encoding="utf-8")
-                    decoded = demjson3.decode(current_text, encoding='utf-8', strict=False)
-                    fixed_text: str = json.dumps(decoded)
-                    await p.write_text(fixed_text)
-                    fmt_error = None # Dump success, no need to check
-                except demjson3.JSONDecodeError as e:
-                    fmt_error = f"JSON decode error: {str(e)}"
-                except Exception as exc:
-                    fmt_error = f"failed to validate JSON file: {str(exc)}"
-            if fmt_error:
-                return ToolError(
-                    message=f"File successfully {action}, but {fmt_error}",
-                    brief="Format validation failed",
-                )
+            # Compute file size in-memory
+            file_size = len(new_text.encode("utf-8"))
+            action_desc = "overwritten" if params.mode == "overwrite" else "appended to"
 
             return ToolReturnValue(
                 is_error=False,
                 output="",
                 message=(
-                    f"File successfully {action}. Current size: {file_size} bytes."),
+                    f"File successfully {action_desc}. Current size: {file_size} bytes."
+                ),
                 display=diff_blocks,
             )
 
         except Exception as e:
             logger.warning(
-                "WriteFile failed: {path}: {error}", path=params.path, error=e)
+                "WriteFile failed: {path}: {error}", path=params.path, error=e
+            )
             return ToolError(
                 message=f"Failed to write to {params.path}. Error: {e}",
                 brief="Failed to write file",

@@ -1,7 +1,9 @@
+import asyncio
 import demjson3
 import json
 from collections.abc import Callable
 from pathlib import Path
+from stat import S_ISREG
 from typing import override
 
 from kaos.path import KaosPath
@@ -79,12 +81,22 @@ class StrReplaceFile(CallableTool2[Params]):
             )
         return None
 
-    def _apply_edit(self, content: str, edit: Edit) -> str:
-        """Apply a single edit to the content."""
+    def _apply_edit(self, content: str, edit: Edit) -> tuple[str, int]:
+        """Apply a single edit to the content and return (new_content, replacements_made)."""
+        if not edit.old or edit.old == edit.new:
+            return content, 0
+
         if edit.replace_all:
-            return content.replace(edit.old, edit.new)
-        else:
-            return content.replace(edit.old, edit.new, 1)
+            count = content.count(edit.old)
+            if count == 0:
+                return content, 0
+            return content.replace(edit.old, edit.new), count
+
+        # Single replacement
+        idx = content.find(edit.old)
+        if idx == -1:
+            return content, 0
+        return content.replace(edit.old, edit.new, 1), 1
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -100,6 +112,8 @@ class StrReplaceFile(CallableTool2[Params]):
                 return err
             p = p.canonical()
 
+            in_workspace = is_within_workspace(p, self._work_dir, self._additional_dirs)
+
             plan_target = inspect_plan_edit_target(
                 p,
                 plan_mode_checker=self._plan_mode_checker,
@@ -110,7 +124,14 @@ class StrReplaceFile(CallableTool2[Params]):
 
             is_plan_file_edit = plan_target.is_plan_target
 
-            if not await p.exists():
+            try:
+                st = await p.stat()
+                if not S_ISREG(st.st_mode):
+                    return ToolError(
+                        message=f"`{params.path}` is not a file.",
+                        brief="Invalid path",
+                    )
+            except FileNotFoundError:
                 if is_plan_file_edit:
                     return ToolError(
                         message=(
@@ -123,11 +144,6 @@ class StrReplaceFile(CallableTool2[Params]):
                     message=f"`{params.path}` does not exist.",
                     brief="File not found",
                 )
-            if not await p.is_file():
-                return ToolError(
-                    message=f"`{params.path}` is not a file.",
-                    brief="Invalid path",
-                )
 
             # Read the file content
             content = await p.read_text(errors="replace")
@@ -135,26 +151,28 @@ class StrReplaceFile(CallableTool2[Params]):
             original_content = content
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
-            # Apply all edits
-            for edit in edits:
-                content = self._apply_edit(content, edit)
+            def _work() -> tuple[str, int]:
+                text = content
+                total = 0
+                for edit in edits:
+                    text, n = self._apply_edit(text, edit)
+                    total += n
+                return text, total
+
+            new_content, total_replacements = await asyncio.to_thread(_work)
 
             # Check if any changes were made
-            if content == original_content:
+            if new_content == original_content:
                 return ToolError(
                     message="No replacements were made. The old string was not found in the file.",
                     brief="No replacements made",
                 )
 
             diff_blocks: list[DisplayBlock] = await build_diff_blocks(
-                str(p), original_content, content
+                str(p), original_content, new_content
             )
 
-            action = (
-                FileActions.EDIT
-                if is_within_workspace(p, self._work_dir, self._additional_dirs)
-                else FileActions.EDIT_OUTSIDE
-            )
+            action = FileActions.EDIT if in_workspace else FileActions.EDIT_OUTSIDE
 
             # Plan file edits are auto-approved; all other edits need approval.
             if not is_plan_file_edit:
@@ -167,40 +185,41 @@ class StrReplaceFile(CallableTool2[Params]):
                 if not result:
                     return result.rejection_error()
 
-            # Write the modified content back to the file
-            await p.write_text(content, errors="replace")
-
-            # Count changes for success message
-            total_replacements = 0
-            for edit in edits:
-                if edit.replace_all:
-                    total_replacements += original_content.count(edit.old)
-                else:
-                    total_replacements += 1 if edit.old in original_content else 0
+            # Fix JSON format before writing if needed
             file_path_str = str(p)
             fmt_error = None
-            is_json = file_path_str.lower().endswith(".json")
+            suffix = Path(file_path_str).suffix.lower()
+            is_json = suffix == ".json"
             if is_json:
                 fmt_error = await check_json(file_path_str)
-            elif file_path_str.lower().endswith(".xml"):
+            elif suffix == ".xml":
                 fmt_error = await check_xml(file_path_str)
+
+            fixed_content = new_content
             if fmt_error and is_json and params.fix_foramt:
                 try:
-                    current_text:str = await p.read_text(encoding="utf-8")
-                    decoded = demjson3.decode(current_text, encoding='utf-8', strict=False)
-                    fixed_text: str = json.dumps(decoded)
-                    await p.write_text(fixed_text)
-                    fmt_error = None # Dump success, no need to check
-                except demjson3.JSONDecodeError as e:
-                    fmt_error = f"JSON decode error: {str(e)}"
-                except Exception as exc:
-                    fmt_error = f"failed to validate JSON file: {str(exc)}"
+                    decoded = json.loads(new_content)
+                    fixed_content = json.dumps(decoded)
+                    fmt_error = None
+                except json.JSONDecodeError:
+                    try:
+                        decoded = demjson3.decode(new_content, encoding='utf-8', strict=False)
+                        fixed_content = json.dumps(decoded)
+                        fmt_error = None
+                    except demjson3.JSONDecodeError as e:
+                        fmt_error = f"JSON decode error: {str(e)}"
+                    except Exception as exc:
+                        fmt_error = f"failed to validate JSON file: {str(exc)}"
+
+            # Write the modified content back to the file
+            await p.write_text(fixed_content, errors="replace")
+
             if fmt_error:
                 return ToolError(
                     message=f"File successfully edited, but {fmt_error}",
                     brief="Format validation failed",
                 )
-                
+
             return ToolReturnValue(
                 is_error=False,
                 output="",
@@ -211,9 +230,11 @@ class StrReplaceFile(CallableTool2[Params]):
                 display=diff_blocks,
             )
 
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             logger.warning("StrReplaceFile failed: {path}: {error}", path=params.path, error=e)
             return ToolError(
                 message=f"Failed to edit. Error: {e}",
                 brief="Failed to edit file",
             )
+        except MemoryError:
+            raise
