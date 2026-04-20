@@ -23,7 +23,7 @@ dependencies = [
     "lxml==6.0.2",
     "tenacity",
     "fastmcp",
-    "pydantic",
+    "pydantic==2.13.2",
     "httpx[socks]==0.28.1",
     "pykaos==0.9.0",
     "batrachian-toad==0.5.23; python_version >= \"3.14\"",
