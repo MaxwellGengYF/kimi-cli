@@ -27,8 +27,7 @@ from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli import logger
 from kimi_cli.utils.sensitive import is_sensitive_file, sensitive_file_warning
-
-
+import concurrent.futures
 class Params(BaseModel):
     pattern: str = Field(description="Regex pattern.")
     path: str = Field(
@@ -91,9 +90,13 @@ class Params(BaseModel):
         default=False,
     )
 
+# Github
+RG_VERSION = "15.1.0"
+RG_BASE_URL = f"https://github.com/BurntSushi/ripgrep/releases/download/{RG_VERSION}"
+# Kimi website (for Chinese users)
+BACKUP_RG_VERSION = "15.0.0"
+BACKUP_RG_BASE_URL = "http://cdn.kimi.com/binaries/kimi-cli/rg"
 
-RG_VERSION = "15.0.0"
-RG_BASE_URL = "http://cdn.kimi.com/binaries/kimi-cli/rg"
 RG_TIMEOUT = 60  # seconds
 RG_MAX_BUFFER = 20_000_000  # 20MB stdout/stderr buffer limit
 RG_KILL_GRACE = 5  # seconds: SIGTERM → SIGKILL
@@ -148,15 +151,19 @@ def _detect_target() -> str | None:
 
 
 async def _download_and_install_rg(bin_name: str) -> Path:
+    print("riggrep not found, downloading...")
     target = _detect_target()
     if not target:
         raise RuntimeError("Unsupported platform for ripgrep download")
 
     is_windows = "windows" in target
     archive_ext = "zip" if is_windows else "tar.gz"
-    filename = f"ripgrep-{RG_VERSION}-{target}.{archive_ext}"
-    url = f"{RG_BASE_URL}/{filename}"
-    logger.info("Downloading ripgrep from {url}", url=url)
+
+    primary_filename = f"ripgrep-{RG_VERSION}-{target}.{archive_ext}"
+    primary_url = f"{RG_BASE_URL}/{primary_filename}"
+
+    backup_filename = f"ripgrep-{BACKUP_RG_VERSION}-{target}.{archive_ext}"
+    backup_url = f"{BACKUP_RG_BASE_URL}/{backup_filename}"
 
     share_bin_dir = get_share_dir() / "bin"
     share_bin_dir.mkdir(parents=True, exist_ok=True)
@@ -166,8 +173,11 @@ async def _download_and_install_rg(bin_name: str) -> Path:
     download_timeout = aiohttp.ClientTimeout(total=600, sock_read=60, sock_connect=15)
     async with new_client_session(timeout=download_timeout) as session:
         with tempfile.TemporaryDirectory(prefix="kimi-rg-") as tmpdir:
-            tar_path = Path(tmpdir) / filename
+            tar_path = Path(tmpdir) / primary_filename
 
+            # Try primary URL first
+            url = primary_url
+            logger.info("Downloading ripgrep from {url}", url=url)
             try:
                 async with session.get(url) as resp:
                     resp.raise_for_status()
@@ -176,7 +186,23 @@ async def _download_and_install_rg(bin_name: str) -> Path:
                             if chunk:
                                 fh.write(chunk)
             except (aiohttp.ClientError, TimeoutError) as exc:
-                raise RuntimeError("Failed to download ripgrep binary") from exc
+                logger.warning(
+                    "Failed to download ripgrep from primary URL ({url}), trying backup...",
+                    url=url,
+                )
+                # Try backup URL
+                url = backup_url
+                tar_path = Path(tmpdir) / backup_filename
+                logger.info("Downloading ripgrep from {url}", url=url)
+                try:
+                    async with session.get(url) as resp:
+                        resp.raise_for_status()
+                        with open(tar_path, "wb") as fh:
+                            async for chunk in resp.content.iter_chunked(1024 * 64):
+                                if chunk:
+                                    fh.write(chunk)
+                except (aiohttp.ClientError, TimeoutError) as exc2:
+                    raise RuntimeError(f"Failed to download ripgrep binary, try download it manually from {RG_BASE_URL} and saved to {destination}") from exc2
 
             try:
                 if is_windows:
@@ -351,20 +377,33 @@ def _strip_path_prefix(lines: list[str], search_base: str) -> list[str]:
         for line in lines
     ]
 
-
 class Grep(CallableTool2[Params]):
     name: str = "Grep"
     description: str = load_desc(Path(__file__).parent / "grep.md")
     params: type[Params] = Params
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._rg_path = None
+        from kimi_cli.tools import SkipThisTool
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(asyncio.run, _ensure_rg_path())
+            try:
+                self._rg_path = future.result()
+            except RuntimeError as e:
+                print(f"\033[33m{str(e)}\033[0m")
+        if self._rg_path is None:
+            raise SkipThisTool()
     @override
     async def __call__(self, params: Params, *, _retry: bool = False) -> ToolReturnValue:
+        
         try:
             builder = ToolResultBuilder()
             message = ""
 
             # Build rg command
-            rg_path = await _ensure_rg_path()
+            rg_path = self._rg_path
+            assert rg_path is not None
             logger.debug("Using ripgrep binary: {rg_bin}", rg_bin=rg_path)
             args = _build_rg_args(rg_path, params, single_threaded=_retry)
 
