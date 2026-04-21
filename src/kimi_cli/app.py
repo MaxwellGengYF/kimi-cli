@@ -230,6 +230,9 @@ class KimiCLI:
             thinking=thinking,
             session_id=session.id,
             oauth=oauth,
+            temperature=config.temperature,
+            top_p=config.top_p,
+            top_k=config.top_k
         )
         if llm is not None:
             logger.info("Using LLM provider: {provider}", provider=provider)

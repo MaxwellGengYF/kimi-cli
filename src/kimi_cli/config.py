@@ -235,6 +235,11 @@ class Config(BaseModel):
             "instead of using only the first one found"
         ),
     )
+    
+    # LLM override settings
+    temperature: float | None = Field(default=None, description='LLM Temperature')
+    top_p: float | None = Field(default=None, description='LLM top_p')
+    top_k: int | None = Field(default=None, description='LLM top_k')
 
     @model_validator(mode="after")
     def validate_model(self) -> Self:

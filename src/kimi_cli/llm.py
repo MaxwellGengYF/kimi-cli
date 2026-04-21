@@ -113,6 +113,10 @@ def create_llm(
     thinking: bool | None = None,
     session_id: str | None = None,
     oauth: OAuthManager | None = None,
+    
+    temperature: float | None = None,
+    top_p: float | None = None,
+    top_k: int | None = None,
 ) -> LLM | None:
     if provider.type not in {"_echo", "_scripted_echo"} and (
         not provider.base_url or not model.model
@@ -143,9 +147,13 @@ def create_llm(
             gen_kwargs: Kimi.GenerationKwargs = {}
             if session_id:
                 gen_kwargs["prompt_cache_key"] = session_id
-            if temperature := os.getenv("KIMI_MODEL_TEMPERATURE"):
+            if temperature is None:
+                temperature = os.getenv("KIMI_MODEL_TEMPERATURE")
+            if temperature is not None:
                 gen_kwargs["temperature"] = float(temperature)
-            if top_p := os.getenv("KIMI_MODEL_TOP_P"):
+            if top_p is None:
+                top_p = os.getenv("KIMI_MODEL_TOP_P")
+            if top_p is not None:
                 gen_kwargs["top_p"] = float(top_p)
             if max_tokens := os.getenv("KIMI_MODEL_MAX_TOKENS"):
                 gen_kwargs["max_tokens"] = int(max_tokens)
@@ -230,6 +238,15 @@ def create_llm(
                     error_types=[429, 500, 503],
                 ),
             )
+    _generation_kwargs = None
+    if chat_provider is not None:
+        _generation_kwargs = getattr(chat_provider, '_generation_kwargs', None)
+    if temperature is not None and _generation_kwargs and hasattr(_generation_kwargs, 'temperature'):
+        setattr(_generation_kwargs, 'temperature', temperature)
+    if top_p is not None and _generation_kwargs and hasattr(_generation_kwargs, 'top_p'):
+        setattr(_generation_kwargs, 'top_p', top_p)
+    if top_k is not None and _generation_kwargs and hasattr(_generation_kwargs, 'top_k'):
+        setattr(_generation_kwargs, 'top_k', top_k)
 
     capabilities = derive_model_capabilities(model)
 
