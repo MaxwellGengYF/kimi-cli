@@ -240,7 +240,7 @@ class Config(BaseModel):
     top_p: float | None = Field(default=None, description='LLM top_p')
     top_k: int | None = Field(default=None, description='LLM top_k')
     telemetry: bool = Field(
-        default=True,
+        default=False,
         description="Enable anonymous telemetry to help improve kimi-cli. Set to false to disable.",
     )
 
