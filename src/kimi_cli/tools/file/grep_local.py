@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import override
 
 import asyncio
-import concurrent.futures
 import fnmatch
 import heapq
 import os
@@ -504,8 +503,6 @@ def _merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
         else:
             merged.append([start, end])
     return [(m[0], m[1]) for m in merged]
-
-
 class Grep(CallableTool2[Params]):
     name: str = "Grep"
     description: str = load_desc(Path(__file__).parent / "grep.md")
@@ -513,16 +510,17 @@ class Grep(CallableTool2[Params]):
 
     def __init__(self) -> None:
         super().__init__()
-        self._rg_path = None
-        from kimi_cli.tools import SkipThisTool
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(asyncio.run, _ensure_rg_path())
-            try:
-                self._rg_path = future.result()
-            except RuntimeError as e:
-                logger.warning(f"rg install error: {str(e)}")
+        self._rg_path: str | None = None
+        self._rg_path_task: asyncio.Task[str] | None = asyncio.create_task(_ensure_rg_path())
     @override
     async def __call__(self, params: Params, *, _retry: bool = False) -> ToolReturnValue:
+        if self._rg_path_task is not None:
+            try:
+                self._rg_path = await self._rg_path_task
+            except Exception:
+                self._rg_path = None
+            self._rg_path_task = None
+
         if self._rg_path is None:
             return await self.backup_grep(params)
         try:

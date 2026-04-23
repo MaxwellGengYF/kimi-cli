@@ -246,7 +246,9 @@ class KimiToolset:
                         lst.append(']')
                         text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
                         print(text)
+                        start_time = time.time()
                         ret = await tool.call(arguments)
+                        end_time = time.time()
                         MAX_BYTES = 128 << 10  # 128KB
                         if type(ret.output) == str:
                             len_bytes = len(ret.output.encode("utf-8"))
@@ -255,14 +257,16 @@ class KimiToolset:
                                 ret.output = f'Output too large ({len_bytes} bytes), exported to `{temp_file}`'
                         if not ret.is_error:
                             self._recent_tool_calls.clear()
+                            time_text = f'LOG: [{tool_call.function.name} spent {(end_time - start_time):.2f} seconds]'
+                            text = f"\033[0;94m{time_text}\033[0m"
                         else:
                             if self._tool_call_failed_list is not None:
                                 self._tool_call_failed_list.append((tool_call.function.name, arg_str, str(ret.output), ret.message))
                             err_msg = ret.brief
                             if not err_msg:
                                 err_msg = ret.message
-                            text = f"\033[0;91merror: {err_msg}\033[0m" # BRIGHT_MAGENTA
-                            print(text)
+                            text = f"\033[0;91m{tool_call.function.name} error: {err_msg} [spent {(end_time - start_time):.2f} seconds]\033[0m" # BRIGHT_MAGENTA
+                        print(text)
                             
                 except Exception as e:
                     tool_elapsed = time.monotonic() - t0

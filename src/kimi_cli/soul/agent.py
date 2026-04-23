@@ -248,9 +248,8 @@ class Runtime:
         logger.info("Discovered {count} skill(s)", count=len(skills))
         skills_formatted = "\n".join(
             (
-                f"- {skill.name}\n"
-                f"- Path: {skill.skill_md_file}\n"
-                f"- Description: {skill.description}" if skill.description else ''
+                f"- {skill.name}: `{skill.skill_md_file}`"
+                f" Description: {skill.description}" if skill.description else ''
             )
             for skill in skills
         )
