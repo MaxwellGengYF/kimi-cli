@@ -6,12 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast, get_args
 
-from kosong.chat_provider import ChatProvider
+from kosong.chat_provider import ChatProvider, ThinkingEffort
 from pydantic import SecretStr
 
 from kimi_cli.constant import USER_AGENT
 from kimi_cli.utils.logging import logger
-
 if TYPE_CHECKING:
     from kimi_cli.auth.oauth import OAuthManager
     from kimi_cli.config import Config, LLMModel, LLMProvider
@@ -105,7 +104,7 @@ def _kimi_default_headers(provider: LLMProvider, oauth: OAuthManager | None) -> 
         headers.update(provider.custom_headers)
     return headers
 
-
+LEGAL_THINKING_EFFORT = frozenset({"off", "low", "medium", "high", "xhigh", "max"})
 def create_llm(
     provider: LLMProvider,
     model: LLMModel,
@@ -118,6 +117,7 @@ def create_llm(
     temperature: float | None = None,
     top_p: float | None = None,
     top_k: int | None = None,
+    thinking_effort: str | None = None,
 ) -> LLM | None:
     if provider.type not in {"_echo", "_scripted_echo"} and (
         not provider.base_url or not model.model
@@ -127,7 +127,9 @@ def create_llm(
             provider_type=provider.type,
         )
         return None
-
+    
+    assert not thinking_effort or thinking_effort in LEGAL_THINKING_EFFORT, 'thinking_effort must be `off`, `low`, `medium`, `high`, `xhigh` and `max`'
+    
     resolved_api_key = (
         oauth.resolve_api_key(provider.api_key, provider.oauth)
         if oauth and provider.oauth
@@ -258,7 +260,7 @@ def create_llm(
 
     # Apply thinking if specified or if model always requires thinking
     if "always_thinking" in capabilities or (thinking is True and "thinking" in capabilities):
-        chat_provider = chat_provider.with_thinking("high")
+        chat_provider = chat_provider.with_thinking(thinking_effort if thinking_effort is not None else 'high')
     elif thinking is False:
         chat_provider = chat_provider.with_thinking("off")
     # If thinking is None and model doesn't always think, leave as-is (default behavior)
