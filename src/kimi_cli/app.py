@@ -240,6 +240,7 @@ class KimiCLI:
             thinking=thinking,
             session_id=session.id,
             oauth=oauth,
+            max_tokens=config.max_tokens,
             temperature=config.temperature,
             top_p=config.top_p,
             top_k=config.top_k
