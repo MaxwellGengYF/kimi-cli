@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import importlib
 import inspect
-import demjson3
+import json
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -163,8 +163,8 @@ class KimiToolset:
             tool = self._tool_dict[tool_call.function.name]
 
             try:
-                arguments: JsonType = demjson3.decode(tool_call.function.arguments or "{}", encoding='utf-8', strict=False)
-            except demjson3.JSONDecodeError as e:
+                arguments: JsonType = json.loads(tool_call.function.arguments or "{}")
+            except json.JSONDecodeError as e:
                 logger.warning(
                     "Tool call JSON parse error: {tool_name} (call_id={call_id}): {error}",
                     tool_name=tool_call.function.name,
