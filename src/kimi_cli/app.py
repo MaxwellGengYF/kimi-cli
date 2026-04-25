@@ -20,7 +20,7 @@ from kimi_cli.background.models import is_terminal_status
 from kimi_cli.cli import InputFormat, OutputFormat
 from kimi_cli.config import Config, LLMModel, LLMProvider, load_config
 from kimi_cli.constant import VERSION
-from kimi_cli.llm import augment_provider_with_env_vars, create_llm, model_display_name
+from kimi_cli.llm import LLM, augment_provider_with_env_vars, create_llm, model_display_name
 from kimi_cli.session import Session
 from kimi_cli.share import get_share_dir
 from kimi_cli.soul import run_soul
@@ -125,6 +125,7 @@ class KimiCLI:
         config: Config | Path | None = None,
         model_name: str | None = None,
         thinking: bool | None = None,
+        llm: LLM | None = None,
         # Run mode
         yolo: bool = False,
         plan_mode: bool = False,
@@ -234,17 +235,24 @@ class KimiCLI:
         if not resumed:
             plan_mode = plan_mode if plan_mode else config.default_plan_mode
 
-        llm = create_llm(
-            provider,
-            model,
-            thinking=thinking,
-            session_id=session.id,
-            oauth=oauth,
-            max_tokens=config.max_tokens,
-            temperature=config.temperature,
-            top_p=config.top_p,
-            top_k=config.top_k
-        )
+        if llm is None:
+            llm = create_llm(
+                provider,
+                model,
+                thinking=thinking,
+                session_id=session.id,
+                oauth=oauth,
+                max_tokens=config.max_tokens,
+                temperature=config.temperature,
+                top_p=config.top_p,
+                top_k=config.top_k
+            )
+        else:
+            llm.max_context_size = model.max_context_size
+            llm.capabilities = model.capabilities
+            llm.model_config = model
+            llm.provider_config = provider
+            
         if llm is not None:
             logger.info("Using LLM provider: {provider}", provider=provider)
             logger.info("Using LLM model: {model}", model=model)
