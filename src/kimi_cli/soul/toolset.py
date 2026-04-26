@@ -32,6 +32,7 @@ from kosong.utils.typing import JsonType
 from kimi_cli import logger
 from kimi_cli.exception import InvalidToolError, MCPRuntimeError
 from kimi_cli.hooks.engine import HookEngine
+from kimi_cli.safety_check import sanitize_for_tokenizer
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.wire.types import (
     AudioURLPart,
@@ -40,6 +41,7 @@ from kimi_cli.wire.types import (
     MCPServerSnapshot,
     MCPStatusSnapshot,
     TextPart,
+    ThinkPart,
     ToolCall,
     ToolCallRequest,
     ToolResult,
@@ -248,6 +250,24 @@ class KimiToolset:
                         print(text)
                         start_time = time.time()
                         ret = await tool.call(arguments)
+                        if isinstance(ret.output, str):
+                            ret.output = sanitize_for_tokenizer(ret.output)
+                        elif isinstance(ret.output, list):
+                            sanitized_parts: list[ContentPart] = []
+                            for part in ret.output:
+                                if isinstance(part, TextPart):
+                                    cleaned = sanitize_for_tokenizer(part.text)
+                                    if cleaned:
+                                        part.text = cleaned
+                                        sanitized_parts.append(part)
+                                elif isinstance(part, ThinkPart):
+                                    cleaned = sanitize_for_tokenizer(part.think)
+                                    if cleaned:
+                                        part.think = cleaned
+                                        sanitized_parts.append(part)
+                                else:
+                                    sanitized_parts.append(part)
+                            ret.output = sanitized_parts
                         end_time = time.time()
                         MAX_BYTES = 128 << 10  # 128KB
                         if type(ret.output) == str:
