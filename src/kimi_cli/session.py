@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+import aiofiles
 from kaos.path import KaosPath
 from kosong.message import Message
 
@@ -125,6 +126,66 @@ class Session:
                 "Failed to derive session title from wire file {file}:",
                 file=self.wire_file.path,
             )
+
+    async def export(self) -> ExportedContext:
+        """Export all data from the session's context.jsonl file.
+
+        Returns:
+            ExportedContext: Structured representation of the context file.
+        """
+        from kimi_cli.soul.context_records import (
+            CheckpointRecord,
+            ExportedContext,
+            SystemPromptRecord,
+            UsageRecord,
+        )
+        from pydantic import ValidationError
+
+        result = ExportedContext()
+
+        if not self.context_file.exists() or self.context_file.stat().st_size == 0:
+            return result
+
+        async with aiofiles.open(self.context_file, encoding="utf-8", errors="replace") as f:
+            async for line in f:
+                if not line.strip():
+                    continue
+                try:
+                    line_json = json.loads(line, strict=False)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(line_json, dict):
+                    continue
+
+                role = line_json.get("role")
+                if not isinstance(role, str):
+                    continue
+                if role == "_system_prompt":
+                    try:
+                        record = SystemPromptRecord.model_validate(line_json)
+                        result.system_prompt = record.content
+                    except ValidationError:
+                        continue
+                elif role == "_usage":
+                    try:
+                        record = UsageRecord.model_validate(line_json)
+                        result.usages.append(record.token_count)
+                    except ValidationError:
+                        continue
+                elif role == "_checkpoint":
+                    try:
+                        record = CheckpointRecord.model_validate(line_json)
+                        result.checkpoints.append(record.id)
+                    except ValidationError:
+                        continue
+                else:
+                    try:
+                        message = Message.model_validate(line_json)
+                        result.messages.append(message)
+                    except ValidationError:
+                        continue
+
+        return result
 
     @staticmethod
     async def create(

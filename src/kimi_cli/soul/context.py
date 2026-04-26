@@ -12,6 +12,7 @@ from kosong.message import Message
 from pydantic import ValidationError
 
 from kimi_cli.soul.compaction import estimate_text_tokens
+from kimi_cli.soul.context_records import CheckpointRecord, SystemPromptRecord, UsageRecord
 from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import next_available_rotation
@@ -291,38 +292,44 @@ class Context:
             )
             return False
         if role == "_system_prompt":
-            content = line_json.get("content")
-            if not isinstance(content, str):
+            try:
+                record = SystemPromptRecord.model_validate(line_json)
+            except ValidationError as exc:
                 logger.warning(
-                    "Skipping invalid system prompt line {line_no} in {file}",
+                    "Skipping invalid system prompt line {line_no} in {file}: {error}",
                     line_no=line_no,
                     file=file_backend,
+                    error=exc,
                 )
                 return False
-            self._system_prompt = content
+            self._system_prompt = record.content
             return True
         if role == "_usage":
-            token_count = line_json.get("token_count")
-            if not isinstance(token_count, int):
+            try:
+                record = UsageRecord.model_validate(line_json)
+            except ValidationError as exc:
                 logger.warning(
-                    "Skipping invalid usage line {line_no} in {file}",
+                    "Skipping invalid usage line {line_no} in {file}: {error}",
                     line_no=line_no,
                     file=file_backend,
+                    error=exc,
                 )
                 return False
-            self._token_count = token_count
+            self._token_count = record.token_count
             messages_after_last_usage.clear()
             return True
         if role == "_checkpoint":
-            checkpoint_id = line_json.get("id")
-            if not isinstance(checkpoint_id, int):
+            try:
+                record = CheckpointRecord.model_validate(line_json)
+            except ValidationError as exc:
                 logger.warning(
-                    "Skipping invalid checkpoint line {line_no} in {file}",
+                    "Skipping invalid checkpoint line {line_no} in {file}: {error}",
                     line_no=line_no,
                     file=file_backend,
+                    error=exc,
                 )
                 return False
-            self._next_checkpoint_id = checkpoint_id + 1
+            self._next_checkpoint_id = record.id + 1
             return True
         try:
             message = Message.model_validate(line_json)
