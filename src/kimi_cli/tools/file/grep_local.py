@@ -509,9 +509,12 @@ class Grep(CallableTool2[Params]):
     params: type[Params] = Params
 
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(self.name, self.description, self.params)
         self._rg_path: str | None = None
         self._rg_path_task: asyncio.Task[str] | None = asyncio.create_task(_ensure_rg_path())
+    def __del__(self) -> None:
+        if self._rg_path_task is not None and not self._rg_path_task.done():
+            self._rg_path_task.cancel()
     @override
     async def __call__(self, params: Params, *, _retry: bool = False) -> ToolReturnValue:
         if self._rg_path_task is not None:
