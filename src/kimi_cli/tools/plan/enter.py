@@ -19,13 +19,7 @@ logger = logging.getLogger(__name__)
 
 NAME = "EnterPlanMode"
 
-_DESCRIPTION = (
-    "Request plan mode before significant implementation. "
-    "Use for new features, architecture decisions, multi-file changes, or unclear requirements. "
-    "Skip for trivial fixes or pure research. "
-    "Yolo mode: only if explicitly requested or exceptional ambiguity. "
-    "Process: investigate, design, write plan, call ExitPlanMode."
-)
+_DESCRIPTION = "Enter plan mode for complex tasks."
 
 
 class Params(BaseModel):

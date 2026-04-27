@@ -1,1 +1,1 @@
-Read text files with optional partial reads (`line_offset`/`n_lines`; negative values read from end). Lines longer than `${MAX_LINE_LENGTH}` chars are truncated. Parallelize when possible; prefer Grep for searching.
+Read text files.

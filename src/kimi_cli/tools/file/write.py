@@ -18,10 +18,7 @@ from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli import logger
 from kimi_cli.utils.path import is_within_workspace
 
-_BASE_DESCRIPTION = (
-    "Write to files. Default `overwrite`—use caution. "
-    "For content over 100 lines, split into multiple calls; use `append` after the first write."
-)
+_BASE_DESCRIPTION = "Write content to a file."
 
 
 class Params(BaseModel):
