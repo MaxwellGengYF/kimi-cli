@@ -1,8 +1,23 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
+import threading
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
+
+
+def _file_digest(path: Path) -> str:
+    """Return blake2b hex digest of file contents using chunked reads."""
+    h = hashlib.blake2b(digest_size=16)
+    with open(path, "rb") as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            h.update(chunk)
+    return h.hexdigest()
 
 
 class VFS:
@@ -12,83 +27,138 @@ class VFS:
         self.virtual_root = Path(virtual_root).resolve()
         self.work_dir = Path(work_dir).resolve()
         self._dirty_files: set[Path] = set()
+        self._lock = threading.Lock()
 
-    def _rel(self, path: Path) -> Path:
-        """Return relative path from work_dir, raising if outside."""
-        p = Path(path)
+    @staticmethod
+    @lru_cache(maxsize=4096)
+    def _resolve_rel(work_dir_str: str, path_str: str) -> str:
+        p = Path(path_str)
         if p.is_symlink():
             p = p.parent.resolve() / p.name
         else:
             p = p.resolve()
+        rel = p.relative_to(Path(work_dir_str))
+        return str(rel)
+
+    def _rel(self, path: Path) -> Path:
+        """Return relative path from work_dir, raising if outside."""
         try:
-            rel = p.relative_to(self.work_dir)
+            rel_str = self._resolve_rel(str(self.work_dir), str(path))
         except ValueError:
+            p = Path(path).resolve()
             raise ValueError(f"Path {p} is not under work_dir {self.work_dir}")
-        return rel
+        return Path(rel_str)
 
     def translate_path(self, path: Path) -> Path:
         """Return the current effective path for *path* (virtual if dirty, else original)."""
         rel = self._rel(path)
-        if rel in self._dirty_files:
-            return self.virtual_root / rel
+        with self._lock:
+            if rel in self._dirty_files:
+                return self.virtual_root / rel
         return self.work_dir / rel
 
     def get(self, path: Path, mark_dirty: bool = True) -> Path:
         """Retrieve *path* and optionally copy it into the virtual layer."""
         original = Path(path)
-        p = original.resolve()
         rel = self._rel(original)
+        resolved = self.work_dir / rel
 
-        if rel in self._dirty_files:
-            return self.virtual_root / rel
+        with self._lock:
+            if rel in self._dirty_files:
+                return self.virtual_root / rel
 
-        if not mark_dirty or not p.is_file():
-            return original
+            if not mark_dirty or not resolved.is_file():
+                return original
 
-        dest = self.virtual_root / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        data = p.read_bytes()
-        dest.write_bytes(data)
+            dest = self.virtual_root / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_suffix(dest.suffix + ".tmp")
+            try:
+                shutil.copyfile(resolved, tmp)
+                tmp.replace(dest)
+                self._dirty_files.add(rel)
+            finally:
+                if tmp.exists():
+                    tmp.unlink()
 
-        self._dirty_files.add(rel)
-
-        return dest
+            return dest
 
     def is_dirty(self, path: Path) -> bool:
         """Check whether *path* is currently tracked as dirty."""
-        return self._rel(path) in self._dirty_files
+        rel = self._rel(path)
+        with self._lock:
+            return rel in self._dirty_files
 
 
-def merge(*vfs_instances: VFS) -> dict[Path, list[tuple[int, bytes]]]:
+def merge(
+    *vfs_instances: VFS, apply: bool = False
+) -> tuple[dict[Path, list[tuple[int, bytes]]], dict[Path, bytes]]:
     """Detect conflicts across multiple VFS instances.
 
-    Returns a mapping from relative path to a list of (vfs_index, content)
-    for every path that appears in more than one VFS with differing content.
-    """
-    # Collect all dirty paths and their content per VFS
-    all_paths: set[Path] = set()
-    contents: dict[Path, dict[int, bytes]] = {}
-    hashes: dict[Path, dict[int, str]] = {}
+    If *apply* is True, non-conflicting changes are written to the shared
+    work_dir and removed from each VFS's virtual layer.
 
-    for idx, vfs in enumerate(vfs_instances):
-        for rel in vfs._dirty_files:
-            all_paths.add(rel)
-            src = vfs.virtual_root / rel
-            data = src.read_bytes()
-            h = hashlib.sha256(data).hexdigest()
-            contents.setdefault(rel, {})[idx] = data
-            hashes.setdefault(rel, {})[idx] = h
+    Returns a tuple of (conflicts, applied_changes).
+    """
+    if not vfs_instances:
+        return {}, {}
 
     conflicts: dict[Path, list[tuple[int, bytes]]] = {}
-    for rel in all_paths:
-        # Only consider paths present in >1 VFS
-        idxs = list(contents[rel].keys())
-        if len(idxs) < 2:
-            continue
-        # Check if all hashes are identical
-        hs = list(hashes[rel].values())
-        if len(set(hs)) == 1:
-            continue
-        conflicts[rel] = [(i, contents[rel][i]) for i in idxs]
+    applied_changes: dict[Path, bytes] = {}
 
-    return conflicts
+    all_paths: set[Path] = set()
+    for vfs in vfs_instances:
+        with vfs._lock:
+            all_paths.update(vfs._dirty_files)
+
+    for rel in all_paths:
+        holders: list[tuple[int, VFS]] = []
+        for idx, vfs in enumerate(vfs_instances):
+            with vfs._lock:
+                if rel in vfs._dirty_files:
+                    holders.append((idx, vfs))
+
+        if not holders:
+            continue
+
+        # Fast path: single holder with no apply -> can't conflict, skip I/O.
+        if len(holders) == 1 and not apply:
+            continue
+
+        # Hash every holder's file via streaming reads.
+        idx_hashes: list[tuple[int, str, VFS]] = []
+        for idx, vfs in holders:
+            h = _file_digest(vfs.virtual_root / rel)
+            idx_hashes.append((idx, h, vfs))
+
+        unique_hashes = {h for _, h, _ in idx_hashes}
+        is_conflict = len(unique_hashes) > 1
+
+        if is_conflict:
+            conflicts[rel] = [
+                (idx, (vfs.virtual_root / rel).read_bytes())
+                for idx, _, vfs in idx_hashes
+            ]
+            continue
+
+        if apply and idx_hashes:
+            idx, _, vfs = idx_hashes[0]
+            data = (vfs.virtual_root / rel).read_bytes()
+            dest = vfs.work_dir / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_suffix(dest.suffix + ".tmp")
+            try:
+                tmp.write_bytes(data)
+                tmp.replace(dest)
+                applied_changes[rel] = data
+            finally:
+                if tmp.exists():
+                    tmp.unlink()
+            for _, _, vfs2 in idx_hashes:
+                with vfs2._lock:
+                    vfs2._dirty_files.discard(rel)
+                vfile = vfs2.virtual_root / rel
+                if vfile.exists():
+                    vfile.unlink()
+
+    return conflicts, applied_changes
