@@ -7,6 +7,7 @@ import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import aiofiles
 from kaos.path import KaosPath
@@ -18,6 +19,7 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.utils.string import shorten
 from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import TurnBegin
+from kimi_cli.soul.context_records import ExportedContext
 
 
 @dataclass(slots=True, kw_only=True)
@@ -46,6 +48,7 @@ class Session:
     updated_at: float
     """The timestamp of the last update to the session."""
 
+    custom_data: dict[str, Any]
     @property
     def dir(self) -> Path:
         """The absolute path of the session directory."""
@@ -59,6 +62,10 @@ class Session:
         path = self.dir / "subagents"
         path.mkdir(parents=True, exist_ok=True)
         return path
+
+    def get_custom_data(self) -> dict[str, Any]:
+        """Return the custom data dictionary."""
+        return self.custom_data
 
     def is_empty(self) -> bool:
         """Whether the session has any context history or a custom title."""
@@ -237,6 +244,7 @@ class Session:
             state=SessionState(),
             title="",
             updated_at=0.0,
+            custom_data={},
         )
         await session.refresh()
         return session
@@ -280,6 +288,7 @@ class Session:
             state=load_session_state(session_dir),
             title="",
             updated_at=0.0,
+            custom_data={},
         )
         await session.refresh()
         return session
@@ -324,6 +333,7 @@ class Session:
                 state=load_session_state(session_dir),
                 title="",
                 updated_at=0.0,
+                custom_data={},
             )
             if session.is_empty():
                 logger.debug(
