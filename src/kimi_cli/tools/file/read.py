@@ -5,8 +5,11 @@ from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field, model_validator
 
+from kimi_cli.session import Session
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.file.utils import MEDIA_SNIFF_BYTES, detect_file_type
+from kimi_cli.vfs import VFS
+from .utils import resolve_vfs
 from kimi_cli.tools.utils import load_desc, truncate_line
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import is_within_workspace
@@ -52,8 +55,13 @@ class Params(BaseModel):
 class ReadFile(CallableTool2[Params]):
     name: str = "ReadFile"
     params: type[Params] = Params
+    def __del__(self):
+        # TODO
+        pass
+        
 
-    def __init__(self, runtime: Runtime) -> None:
+    def __init__(self, runtime: Runtime, session: Session, vfs: VFS | None = None) -> None:
+        self.session_id = session.id
         description = load_desc(
             Path(__file__).parent / "read.md",
             {
@@ -66,6 +74,7 @@ class ReadFile(CallableTool2[Params]):
         self._runtime = runtime
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
         self._additional_dirs = runtime.additional_dirs
+        self._vfs = vfs
 
     async def _validate_path(self, path: KaosPath) -> ToolError | None:
         """Validate that the path is safe to read."""
@@ -95,12 +104,13 @@ class ReadFile(CallableTool2[Params]):
             )
 
         try:
-            p = KaosPath(params.path).expanduser()
-            if err := await self._validate_path(p):
+            logical_path = KaosPath(params.path).expanduser().canonical()
+            if err := await self._validate_path(logical_path):
                 return err
-            p = p.canonical()
 
-            if is_sensitive_file(str(p)):
+            p = await resolve_vfs(params.path, self._vfs, for_write=False)
+
+            if is_sensitive_file(str(logical_path)):
                 return ToolError(
                     message=(
                         f"`{params.path}` appears to contain secrets "
@@ -122,7 +132,7 @@ class ReadFile(CallableTool2[Params]):
                 )
 
             header = await p.read_bytes(MEDIA_SNIFF_BYTES)
-            file_type = detect_file_type(str(p), header=header)
+            file_type = detect_file_type(str(logical_path), header=header)
             if file_type.kind in ("image", "video"):
                 return ToolError(
                     message=(

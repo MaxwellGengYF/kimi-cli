@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
+import tempfile
 from typing import TYPE_CHECKING, Any, Literal, Callable
 
 import pydantic
@@ -37,6 +38,7 @@ from kimi_cli.subagents.store import SubagentStore
 from kimi_cli.utils.environment import Environment
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import find_project_root, is_within_directory, list_directory
+from kimi_cli.vfs import VFS
 from kimi_cli.wire.root_hub import RootWireHub
 
 if TYPE_CHECKING:
@@ -438,6 +440,15 @@ async def load_agent(
         LaborMarket: runtime.labor_market,
         Environment: runtime.environment,
     }
+    vfs_path: Path | None = custom_arguments.get('vfs_path', None)
+    if vfs_path is not None:
+        vfs = VFS(
+            virtual_root=vfs_path,
+            work_dir=Path(str(runtime.builtin_args.KIMI_WORK_DIR))
+        )
+        tool_deps[VFS] = vfs
+    else:
+        tool_deps[VFS] = None
     tools = agent_spec.allowed_tools if agent_spec.allowed_tools is not None else agent_spec.tools
     if agent_spec.exclude_tools:
         logger.debug("Excluding tools: {tools}", tools=agent_spec.exclude_tools)

@@ -59,7 +59,7 @@ async def test_glob_recursive_pattern_prohibited(glob_tool: Glob, test_files: Ka
     result = await glob_tool(Params(pattern="**/*.py", directory=str(test_files)))
 
     assert result.is_error
-    assert "starts with '**' which is not allowed" in result.message
+    assert "starts with '**', which is not allowed" in result.message
     assert "Unsafe pattern" in result.brief
 
 
@@ -147,7 +147,7 @@ async def test_glob_with_relative_path(glob_tool: Glob):
     result = await glob_tool(Params(pattern="*.py", directory="relative/path"))
 
     assert result.is_error
-    assert "not an absolute path" in result.message
+    assert "does not exist" in result.message
 
 
 async def test_glob_tilde_path_expanded(glob_tool: Glob):
@@ -238,8 +238,8 @@ async def test_glob_enhanced_double_star_validation(glob_tool: Glob, temp_work_d
     result = await glob_tool(Params(pattern="**/*.txt", directory=str(temp_work_dir)))
 
     assert result.is_error
-    assert "starts with '**' which is not allowed" in result.message
-    assert "Use more specific patterns instead" in result.message
+    assert "starts with '**', which is not allowed" in result.message
+    assert "Use a more specific pattern" in result.message
     # Should include directory listing
     assert isinstance(result.output, str)
     assert "file1.txt" in result.output
@@ -293,7 +293,7 @@ async def test_glob_wildcard_with_double_star_patterns(glob_tool: Glob, test_fil
     result = await glob_tool(Params(pattern="**/main/*.py", directory=str(test_files)))
 
     assert result.is_error
-    assert "starts with '**' which is not allowed" in result.message
+    assert "starts with '**', which is not allowed" in result.message
 
     # Test pattern with ** not at the beginning
     result = await glob_tool(Params(pattern="src/**/test_*.py", directory=str(test_files)))
@@ -318,7 +318,7 @@ async def test_glob_pattern_edge_cases(glob_tool: Glob, test_files: KaosPath):
     # Test pattern that starts with **/
     result = await glob_tool(Params(pattern="**/*.txt", directory=str(test_files)))
     assert result.is_error
-    assert "starts with '**' which is not allowed" in result.message
+    assert "starts with '**', which is not allowed" in result.message
 
 
 async def test_glob_hidden_files(glob_tool: Glob, temp_work_dir: KaosPath):

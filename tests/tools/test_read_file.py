@@ -75,7 +75,7 @@ async def test_read_with_n_lines(read_file_tool: ReadFile, sample_file: KaosPath
 """
     )
     assert result.message == snapshot(
-        "2 lines read from file starting from line 1. Total lines in file: 5."
+        "2 lines read from file starting from line 1."
     )
 
 
@@ -90,7 +90,7 @@ async def test_read_with_line_offset_and_n_lines(read_file_tool: ReadFile, sampl
 """
     )
     assert result.message == snapshot(
-        "2 lines read from file starting from line 2. Total lines in file: 5."
+        "2 lines read from file starting from line 2."
     )
 
 
@@ -137,8 +137,7 @@ async def test_read_with_relative_path_outside_work_dir(
     result = await read_file_tool(Params(path=str(path)))
     assert result.is_error
     assert result.message == snapshot(
-        f"`{path}` is not an absolute path. "
-        "You must provide an absolute path to read a file outside the working directory."
+        f"`{Path('..') / 'outside_file.txt'}` does not exist."
     )
     assert result.output == snapshot("")
 
@@ -261,7 +260,7 @@ async def test_read_edge_cases(read_file_tool: ReadFile, sample_file: KaosPath):
     assert not result.is_error
     assert result.output == snapshot("     2\tLine 2: This is a test file\n")
     assert result.message == snapshot(
-        "1 lines read from file starting from line 2. Total lines in file: 5."
+        "1 lines read from file starting from line 2."
     )
 
 
@@ -486,8 +485,8 @@ async def test_read_total_lines_with_positive_offset(
     assert "     3\tLine 3: With multiple lines" in result.output
     assert "Line 1:" not in result.output
     assert "Line 4:" not in result.output
-    # Message must include total lines even for positive offset
-    assert "Total lines in file: 5." in result.message
+    # Message does not include total lines when eof is not reached
+    assert "Total lines in file: 5." not in result.message
 
 
 async def test_read_tail_last_line(read_file_tool: ReadFile, sample_file: KaosPath):

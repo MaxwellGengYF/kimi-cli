@@ -20,6 +20,8 @@ from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import is_within_workspace
+from kimi_cli.vfs import VFS
+from .utils import resolve_vfs
 
 _BASE_DESCRIPTION = load_desc(Path(__file__).parent / "replace.md")
 
@@ -48,11 +50,12 @@ class StrReplaceFile(CallableTool2[Params]):
     description: str = _BASE_DESCRIPTION
     params: type[Params] = Params
 
-    def __init__(self, runtime: Runtime, approval: Approval):
+    def __init__(self, runtime: Runtime, approval: Approval, vfs: VFS | None = None):
         super().__init__()
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
         self._additional_dirs = runtime.additional_dirs
         self._approval = approval
+        self._vfs = vfs
         self._plan_mode_checker: Callable[[], bool] | None = None
         self._plan_file_path_getter: Callable[[], Path | None] | None = None
 
@@ -63,23 +66,28 @@ class StrReplaceFile(CallableTool2[Params]):
         self._plan_mode_checker = checker
         self._plan_file_path_getter = path_getter
 
-    async def _validate_path(self, path: KaosPath) -> ToolError | None:
-        """Validate that the path is safe to edit."""
+    async def _validate_path(self, path: KaosPath) -> tuple[ToolError | None, bool]:
+        """Validate that the path is safe to edit.
+
+        Returns:
+            A tuple of (error_or_none, is_inside_workspace).
+        """
         resolved_path = path.canonical()
 
-        if (
-            not is_within_workspace(resolved_path, self._work_dir, self._additional_dirs)
-            and not path.is_absolute()
-        ):
-            return ToolError(
-                message=(
-                    f"`{path}` is not an absolute path. "
-                    "You must provide an absolute path to edit a file "
-                    "outside the working directory."
+        inside = is_within_workspace(resolved_path, self._work_dir, self._additional_dirs)
+        if not inside and not path.is_absolute():
+            return (
+                ToolError(
+                    message=(
+                        f"`{path}` is not an absolute path. "
+                        "You must provide an absolute path to edit a file "
+                        "outside the working directory."
+                    ),
+                    brief="Invalid path",
                 ),
-                brief="Invalid path",
+                False,
             )
-        return None
+        return None, inside
 
     def _apply_edit(self, content: str, edit: Edit) -> tuple[str, int]:
         """Apply a single edit to the content and return (new_content, replacements_made)."""
@@ -107,15 +115,16 @@ class StrReplaceFile(CallableTool2[Params]):
             )
 
         try:
-            p = KaosPath(params.path).expanduser()
-            if err := await self._validate_path(p):
-                return err
-            p = p.canonical()
+            logical_path = KaosPath(params.path).expanduser().canonical()
 
-            in_workspace = is_within_workspace(p, self._work_dir, self._additional_dirs)
+            err, in_workspace = await self._validate_path(logical_path)
+            if err:
+                return err
+
+            p = await resolve_vfs(params.path, self._vfs, for_write=True)
 
             plan_target = inspect_plan_edit_target(
-                p,
+                logical_path,
                 plan_mode_checker=self._plan_mode_checker,
                 plan_file_path_getter=self._plan_file_path_getter,
             )
@@ -128,7 +137,7 @@ class StrReplaceFile(CallableTool2[Params]):
                 st = await p.stat()
                 if not S_ISREG(st.st_mode):
                     return ToolError(
-                        message=f"`{params.path}` is not a file.",
+                        message=f"`{logical_path}` is not a file.",
                         brief="Invalid path",
                     )
             except FileNotFoundError:
@@ -141,7 +150,7 @@ class StrReplaceFile(CallableTool2[Params]):
                         brief="Plan file not created",
                     )
                 return ToolError(
-                    message=f"`{params.path}` does not exist.",
+                    message=f"`{logical_path}` does not exist.",
                     brief="File not found",
                 )
 
@@ -169,7 +178,7 @@ class StrReplaceFile(CallableTool2[Params]):
                 )
 
             diff_blocks: list[DisplayBlock] = await build_diff_blocks(
-                str(p), original_content, new_content
+                str(logical_path), original_content, new_content
             )
 
             action = FileActions.EDIT if in_workspace else FileActions.EDIT_OUTSIDE
@@ -179,14 +188,14 @@ class StrReplaceFile(CallableTool2[Params]):
                 result = await self._approval.request(
                     self.name,
                     action,
-                    f"Edit file `{p}`",
+                    f"Edit file `{logical_path}`",
                     display=diff_blocks,
                 )
                 if not result:
                     return result.rejection_error()
 
             # Fix JSON format before writing if needed
-            file_path_str = str(p)
+            file_path_str = str(logical_path)
             fmt_error = None
             suffix = Path(file_path_str).suffix.lower()
             is_json = suffix == ".json"

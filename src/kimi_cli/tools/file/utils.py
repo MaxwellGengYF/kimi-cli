@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import mimetypes
 from dataclasses import dataclass
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import Literal
+
+from kaos.path import KaosPath
+from kimi_cli.vfs import VFS
 
 MEDIA_SNIFF_BYTES = 512
 
@@ -255,3 +258,25 @@ def detect_file_type(path: str | PurePath, header: bytes | None = None) -> FileT
     if suffix in _NON_TEXT_SUFFIXES:
         return FileType(kind="unknown", mime_type="")
     return FileType(kind="text", mime_type="text/plain")
+
+
+async def resolve_vfs(path_str: str, vfs: VFS | None, *, for_write: bool = False) -> KaosPath:
+    """Resolve a user-provided path through VFS before I/O operations.
+
+    Args:
+        path_str: The original path string from user
+        vfs: VFS instance or None
+        for_write: If True, copies file to virtual layer and marks dirty
+
+    Returns:
+        KaosPath pointing to the physical location (virtual if dirty, else original)
+    """
+    p = KaosPath(path_str).expanduser().canonical()
+    if vfs is None:
+        return p
+    if for_write:
+        # Ensure file is copied into virtual layer; returns virtual Path
+        real = vfs.get(Path(str(p)), mark_dirty=True)
+    else:
+        real = vfs.translate_path(Path(str(p)))
+    return KaosPath.unsafe_from_local_path(real)

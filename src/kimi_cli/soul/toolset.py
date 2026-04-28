@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
+import typing
 from typing import TYPE_CHECKING, Any, Literal, overload
 
 from kosong.tooling import (
@@ -495,9 +496,18 @@ class KimiToolset:
                     # once we encounter a keyword-only parameter, we stop injecting dependencies
                     break
                 # all positional parameters should be dependencies to be injected
-                if param.annotation not in dependencies:
+                annotation = param.annotation
+                if annotation not in dependencies:
+                    # Handle Optional[X] / X | None
+                    origin = typing.get_origin(annotation)
+                    args_ = typing.get_args(annotation)
+                    if origin is not None and type(None) in args_:
+                        non_none = [a for a in args_ if a is not type(None)]
+                        if len(non_none) == 1:
+                            annotation = non_none[0]
+                if annotation not in dependencies:
                     raise ValueError(f"Tool dependency not found: {param.annotation}")
-                args.append(dependencies[param.annotation])
+                args.append(dependencies[annotation])
         return tool_cls(*args)
 
     # TODO(rc): remove `in_background` parameter and always load in background

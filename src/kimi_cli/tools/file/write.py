@@ -17,6 +17,8 @@ from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli import logger
 from kimi_cli.utils.path import is_within_workspace
+from kimi_cli.vfs import VFS
+from .utils import resolve_vfs
 
 _BASE_DESCRIPTION = "Write content to a file."
 
@@ -41,11 +43,12 @@ class WriteFile(CallableTool2[Params]):
     description: str = _BASE_DESCRIPTION
     params: type[Params] = Params
 
-    def __init__(self, runtime: Runtime, approval: Approval):
+    def __init__(self, runtime: Runtime, approval: Approval, vfs: VFS | None = None):
         super().__init__()
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
         self._additional_dirs = runtime.additional_dirs
         self._approval = approval
+        self._vfs = vfs
         self._plan_mode_checker: Callable[[], bool] | None = None
         self._plan_file_path_getter: Callable[[], Path | None] | None = None
 
@@ -92,12 +95,13 @@ class WriteFile(CallableTool2[Params]):
             )
 
         try:
-            p = KaosPath(params.path).expanduser()
+            logical_path = KaosPath(params.path).expanduser().canonical()
 
-            err, path_is_inside = await self._validate_path(p)
+            err, path_is_inside = await self._validate_path(logical_path)
             if err:
                 return err
-            p = p.canonical()
+
+            p = await resolve_vfs(params.path, self._vfs, for_write=True)
 
             if await p.is_dir():
                 return ToolError(
@@ -106,7 +110,7 @@ class WriteFile(CallableTool2[Params]):
                 )
 
             plan_target = inspect_plan_edit_target(
-                p,
+                logical_path,
                 plan_mode_checker=self._plan_mode_checker,
                 plan_file_path_getter=self._plan_file_path_getter,
             )
@@ -150,7 +154,7 @@ class WriteFile(CallableTool2[Params]):
 
             # In-memory format validation & fix (before any write)
             fmt_error = None
-            file_path_str = str(p)
+            file_path_str = str(logical_path)
             is_json = file_path_str.lower().endswith(".json")
             if is_json:
                 fmt_error = check_json_text(new_text)
@@ -211,7 +215,7 @@ class WriteFile(CallableTool2[Params]):
                 result = await self._approval.request(
                     self.name,
                     action,
-                    f"Write file `{p}`",
+                    f"Write file `{logical_path}`",
                     display=diff_blocks,
                 )
                 if not result:

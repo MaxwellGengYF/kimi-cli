@@ -12,6 +12,8 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import is_within_directory, is_within_workspace, list_directory
+from kimi_cli.vfs import VFS
+from .utils import resolve_vfs
 
 MAX_MATCHES = 1000
 
@@ -38,11 +40,12 @@ class Glob(CallableTool2[Params]):
     )
     params: type[Params] = Params
 
-    def __init__(self, runtime: Runtime) -> None:
+    def __init__(self, runtime: Runtime, vfs: VFS | None = None) -> None:
         super().__init__()
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
         self._additional_dirs = runtime.additional_dirs
         self._skills_dirs = runtime.skills_dirs
+        self._vfs = vfs
 
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
         """Validate that the pattern is safe to use."""
@@ -89,23 +92,20 @@ class Glob(CallableTool2[Params]):
             if pattern_error:
                 return pattern_error
 
-            dir_path = (
-                KaosPath(params.directory).expanduser() if params.directory else self._work_dir
-            )
-
-            # if not dir_path.is_absolute():
-            #     return ToolError(
-            #         message=(
-            #             f"`{params.directory}` is not an absolute path. "
-            #             "You must provide an absolute path to search."
-            #         ),
-            #         brief="Invalid directory",
-            #     )
-
-            # # Validate directory safety
-            # dir_error = await self._validate_directory(dir_path)
-            # if dir_error:
-            #     return dir_error
+            if params.directory:
+                logical_dir = KaosPath(params.directory).expanduser().canonical()
+                if (
+                    not is_within_workspace(logical_dir, self._work_dir, self._additional_dirs)
+                    and not any(is_within_directory(logical_dir, d) for d in self._skills_dirs)
+                ):
+                    return ToolError(
+                        message=f"`{params.directory}` is outside the workspace.",
+                        brief="Directory outside workspace",
+                    )
+                dir_path = await resolve_vfs(params.directory, self._vfs, for_write=False)
+            else:
+                logical_dir = self._work_dir
+                dir_path = await resolve_vfs(str(self._work_dir), self._vfs, for_write=False)
 
             if not await dir_path.exists():
                 return ToolError(

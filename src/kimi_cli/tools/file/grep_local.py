@@ -17,6 +17,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import override
 
+from kaos.path import KaosPath
+
 import asyncio
 import fnmatch
 import heapq
@@ -33,6 +35,9 @@ from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli import logger
 from kimi_cli.utils.sensitive import is_sensitive_file, sensitive_file_warning
+from kimi_cli.soul.agent import Runtime
+from kimi_cli.vfs import VFS
+from kimi_cli.utils.path import is_within_workspace
 import concurrent.futures
 class Params(BaseModel):
     pattern: str = Field(description="Regex pattern.")
@@ -480,8 +485,13 @@ def _compile_regex_cached(pattern: str, flags: int) -> re.Pattern[str]:
     return re.compile(pattern, flags)
 
 
-def _read_file_text(file_path: Path) -> str | None:
+def _read_file_text(file_path: Path, vfs: VFS | None = None) -> str | None:
     """Read a file in a single pass: binary read, null-byte check, then decode."""
+    if vfs is not None:
+        try:
+            file_path = vfs.translate_path(file_path)
+        except ValueError:
+            pass  # Path outside VFS work_dir, use original
     try:
         with open(file_path, "rb") as f:
             data = f.read()
@@ -508,15 +518,24 @@ class Grep(CallableTool2[Params]):
     description: str = load_desc(Path(__file__).parent / "grep.md")
     params: type[Params] = Params
 
-    def __init__(self) -> None:
-        super().__init__(self.name, self.description, self.params)
+    def __init__(self, runtime: Runtime, vfs: VFS | None = None) -> None:
         self._rg_path: str | None = None
-        self._rg_path_task: asyncio.Task[str] | None = asyncio.create_task(_ensure_rg_path())
+        self._rg_path_task: asyncio.Task[str] | None = None
+        super().__init__(self.name, self.description, self.params)
+        self._rg_path_task = asyncio.create_task(_ensure_rg_path())
+        self._runtime = runtime
+        self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
+        self._additional_dirs = runtime.additional_dirs
+        self._vfs = vfs
     def __del__(self) -> None:
         if self._rg_path_task is not None and not self._rg_path_task.done():
             self._rg_path_task.cancel()
     @override
     async def __call__(self, params: Params, *, _retry: bool = False) -> ToolReturnValue:
+        has_dirty = (self._vfs is not None and len(self._vfs._dirty_files) > 0)
+        if has_dirty:
+            return await self.backup_grep(params)
+
         if self._rg_path_task is not None:
             try:
                 self._rg_path = await self._rg_path_task
@@ -775,6 +794,22 @@ class Grep(CallableTool2[Params]):
                 )
 
             search_path = Path(os.path.expanduser(params.path)).resolve()
+
+            # Validate workspace
+            logical_search_path = KaosPath(params.path).expanduser().canonical()
+            if not is_within_workspace(logical_search_path, self._work_dir, self._additional_dirs):
+                return ToolError(
+                    message=f"`{params.path}` is outside the workspace.",
+                    brief="Path outside workspace",
+                )
+
+            # Translate search path through VFS for I/O
+            if self._vfs is not None:
+                try:
+                    search_path = self._vfs.translate_path(search_path)
+                except ValueError:
+                    pass  # Path outside VFS work_dir, use original
+
             if not search_path.exists():
                 return ToolError(
                     message=f"`{params.path}` does not exist.",
@@ -791,7 +826,7 @@ class Grep(CallableTool2[Params]):
             max_workers = min(32, (os.cpu_count() or 1) + 4)
 
             def _process_one(file_path: Path) -> list[str]:
-                text = _read_file_text(file_path)
+                text = _read_file_text(file_path, self._vfs)
                 if text is None:
                     return []
 
