@@ -88,7 +88,7 @@ async def test_read_file_in_additional_dir(
     runtime_with_additional_dir: Runtime, additional_dir: KaosPath
 ):
     """ReadFile should read files in additional directories."""
-    read_tool = ReadFile(runtime_with_additional_dir)
+    read_tool = ReadFile(runtime_with_additional_dir, runtime_with_additional_dir.session)
     test_file = additional_dir / "readme.txt"
     await test_file.write_text("Hello from additional dir\n")
 
@@ -101,7 +101,7 @@ async def test_read_file_relative_path_in_additional_dir(
     runtime_with_additional_dir: Runtime, additional_dir: KaosPath
 ):
     """Relative paths that resolve outside work_dir but inside additional dir should work."""
-    read_tool = ReadFile(runtime_with_additional_dir)
+    read_tool = ReadFile(runtime_with_additional_dir, runtime_with_additional_dir.session)
     test_file = additional_dir / "data.txt"
     await test_file.write_text("data content\n")
 

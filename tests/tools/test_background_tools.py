@@ -23,7 +23,7 @@ def _write_task(runtime, task_id: str, *, status: TaskStatus, output: str = ""):
         timeout_s=60,
     )
     store.create_task(spec)
-    store.output_path(task_id).write_text(output, encoding="utf-8")
+    store.output_path(task_id).write_bytes(output.encode("utf-8"))
     runtime_state = TaskRuntime(status=status, updated_at=time.time())
     if status in {"completed", "failed", "killed", "lost"}:
         runtime_state.finished_at = time.time()

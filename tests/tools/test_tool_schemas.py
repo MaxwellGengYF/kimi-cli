@@ -26,31 +26,31 @@ def test_agent_params_schema(agent_tool: AgentTool):
         {
             "properties": {
                 "description": {
-                    "description": "A short (3-5 word) description of the task",
+                    "description": "Short task label (3–5 words).",
                     "type": "string",
                 },
                 "prompt": {
-                    "description": "The task for the agent to perform",
+                    "description": "Task for the agent.",
                     "type": "string",
                 },
                 "subagent_type": {
                     "default": "coder",
-                    "description": "The built-in agent type to use. Defaults to `coder`.",
+                    "description": "Built-in agent type (default: coder).",
                     "type": "string",
                 },
                 "model": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Optional model override. Selection priority is: this parameter, then the built-in type default model, then the parent agent's current model.",
+                    "description": "Optional model override.",
                 },
                 "resume": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Optional agent ID to resume instead of creating a new instance.",
+                    "description": "Agent ID to resume.",
                 },
                 "run_in_background": {
                     "default": False,
-                    "description": "Whether to run the agent in the background. Prefer false unless the task can continue independently and there is a clear benefit to returning control before the result is needed.",
+                    "description": "Run in background.",
                     "type": "boolean",
                 },
                 "timeout": {
@@ -59,7 +59,7 @@ def test_agent_params_schema(agent_tool: AgentTool):
                         {"type": "null"},
                     ],
                     "default": None,
-                    "description": "Timeout in seconds for the agent task. Foreground: no default timeout (runs until completion), max 3600s (1hr). Background: default from config (15min), max 3600s (1hr). The agent is stopped if it exceeds this limit.",
+                    "description": "Timeout in seconds (30–3600).",
                 },
             },
             "required": ["description", "prompt"],
@@ -92,7 +92,7 @@ def test_think_params_schema(think_tool: Think):
         {
             "properties": {
                 "thought": {
-                    "description": "A thought to think about.",
+                    "description": "Thought to log.",
                     "type": "string",
                 }
             },
@@ -113,12 +113,12 @@ def test_set_todo_list_params_schema(set_todo_list_tool: SetTodoList):
                             "items": {
                                 "properties": {
                                     "title": {
-                                        "description": "The title of the todo",
+                                        "description": "Title",
                                         "minLength": 1,
                                         "type": "string",
                                     },
                                     "status": {
-                                        "description": "The status of the todo",
+                                        "description": "Status",
                                         "enum": ["pending", "in_progress", "done"],
                                         "type": "string",
                                     },
@@ -131,7 +131,7 @@ def test_set_todo_list_params_schema(set_todo_list_tool: SetTodoList):
                         {"type": "null"},
                     ],
                     "default": None,
-                    "description": "The updated todo list. If not provided, returns the current todo list without making changes.",
+                    "description": "Updated list. Omit to return current list unchanged.",
                 }
             },
             "type": "object",
@@ -145,24 +145,24 @@ def test_shell_params_schema(shell_tool: Shell):
         {
             "properties": {
                 "command": {
-                    "description": "The command to execute.",
+                    "description": "Command to execute.",
                     "type": "string",
                 },
                 "timeout": {
                     "default": 60,
-                    "description": "The timeout in seconds for the command to execute. If the command takes longer than this, it will be killed.",
+                    "description": "Timeout in seconds.",
                     "maximum": 86400,
                     "minimum": 1,
                     "type": "integer",
                 },
                 "run_in_background": {
                     "default": False,
-                    "description": "Whether to run the command as a background task.",
+                    "description": "Run as background task.",
                     "type": "boolean",
                 },
                 "description": {
                     "default": "",
-                    "description": "A short description for the background task. Required when run_in_background=true.",
+                    "description": "Background task description. Required for background tasks.",
                     "type": "string",
                 },
             },
@@ -177,17 +177,17 @@ def test_task_output_params_schema(task_output_tool: TaskOutput):
         {
             "properties": {
                 "task_id": {
-                    "description": "The background task ID to inspect.",
+                    "description": "Task ID.",
                     "type": "string",
                 },
                 "block": {
                     "default": False,
-                    "description": "Whether to wait for the task to finish before returning.",
+                    "description": "Wait for task completion.",
                     "type": "boolean",
                 },
                 "timeout": {
                     "default": 30,
-                    "description": "Maximum number of seconds to wait when block=true.",
+                    "description": "Wait timeout in seconds.",
                     "maximum": 3600,
                     "minimum": 0,
                     "type": "integer",
@@ -205,12 +205,12 @@ def test_task_list_params_schema(task_list_tool: TaskList):
             "properties": {
                 "active_only": {
                     "default": True,
-                    "description": "Whether to list only non-terminal background tasks.",
+                    "description": "Only active tasks.",
                     "type": "boolean",
                 },
                 "limit": {
                     "default": 20,
-                    "description": "Maximum number of tasks to return.",
+                    "description": "Result limit.",
                     "maximum": 100,
                     "minimum": 1,
                     "type": "integer",
@@ -226,12 +226,12 @@ def test_task_stop_params_schema(task_stop_tool: TaskStop):
         {
             "properties": {
                 "task_id": {
-                    "description": "The background task ID to stop.",
+                    "description": "Task ID.",
                     "type": "string",
                 },
                 "reason": {
                     "default": "Stopped by TaskStop",
-                    "description": "Short reason recorded when the task is stopped.",
+                    "description": "Stop reason.",
                     "type": "string",
                 },
             },
@@ -247,17 +247,17 @@ def test_read_file_params_schema(read_file_tool: ReadFile):
         {
             "properties": {
                 "path": {
-                    "description": "The path to the file to read. Absolute paths are required when reading files outside the working directory.",
+                    "description": "File path. Absolute for files outside working directory.",
                     "type": "string",
                 },
                 "line_offset": {
                     "default": 1,
-                    "description": "The line number to start reading from. By default read from the beginning of the file. Set this when the file is too large to read at once. Negative values read from the end of the file (e.g. -100 reads the last 100 lines). The absolute value of negative offset cannot exceed 1000.",
+                    "description": "Start line, 1-based. Negative reads from end. Max abs 1000.",
                     "type": "integer",
                 },
                 "n_lines": {
                     "default": 1000,
-                    "description": "The number of lines to read. By default read up to 1000 lines, which is the max allowed value. Set this value when the file is too large to read at once.",
+                    "description": "Lines to read, max 1000.",
                     "minimum": 1,
                     "type": "integer",
                 },
@@ -274,7 +274,7 @@ def test_read_media_file_params_schema(read_media_file_tool: ReadMediaFile):
         {
             "properties": {
                 "path": {
-                    "description": "The path to the file to read. Absolute paths are required when reading files outside the working directory.",
+                    "description": "Media path. Absolute required outside work dir.",
                     "type": "string",
                 }
             },
@@ -290,17 +290,17 @@ def test_glob_params_schema(glob_tool: Glob):
         {
             "properties": {
                 "pattern": {
-                    "description": "Glob pattern to match files/directories.",
+                    "description": "Glob pattern. Never start with `**`.",
                     "type": "string",
                 },
                 "directory": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Absolute path to the directory to search in (defaults to working directory).",
+                    "description": "Absolute search path. Defaults to working directory.",
                 },
                 "include_dirs": {
                     "default": True,
-                    "description": "Whether to include directories in results.",
+                    "description": "Include directories in results.",
                     "type": "boolean",
                 },
             },
@@ -316,73 +316,73 @@ def test_grep_params_schema(grep_tool: Grep):
         {
             "properties": {
                 "pattern": {
-                    "description": "The regular expression pattern to search for in file contents",
+                    "description": "Regex pattern.",
                     "type": "string",
                 },
                 "path": {
                     "default": ".",
-                    "description": "File or directory to search in. Defaults to current working directory. If specified, it must be an absolute path.",
+                    "description": "Search target directory or file.",
                     "type": "string",
                 },
                 "glob": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "Glob pattern to filter files (e.g. `*.js`, `*.{ts,tsx}`). No filter by default.",
+                    "description": "Glob filter.",
                 },
                 "output_mode": {
                     "default": "files_with_matches",
-                    "description": "`content`: Show matching lines (supports `-B`, `-A`, `-C`, `-n`, `head_limit`); `files_with_matches`: Show file paths (supports `head_limit`); `count_matches`: Show total number of matches. Defaults to `files_with_matches`.",
+                    "description": "Output format.",
                     "type": "string",
                 },
                 "-B": {
                     "anyOf": [{"type": "integer"}, {"type": "null"}],
                     "default": None,
-                    "description": "Number of lines to show before each match (the `-B` option). Requires `output_mode` to be `content`.",
+                    "description": "Lines before match (content mode only).",
                 },
                 "-A": {
                     "anyOf": [{"type": "integer"}, {"type": "null"}],
                     "default": None,
-                    "description": "Number of lines to show after each match (the `-A` option). Requires `output_mode` to be `content`.",
+                    "description": "Lines after match (content mode only).",
                 },
                 "-C": {
                     "anyOf": [{"type": "integer"}, {"type": "null"}],
                     "default": None,
-                    "description": "Number of lines to show before and after each match (the `-C` option). Requires `output_mode` to be `content`.",
+                    "description": "Lines around match (content mode only).",
                 },
                 "-n": {
                     "default": True,
-                    "description": "Show line numbers in output (the `-n` option). Requires `output_mode` to be `content`. Defaults to true.",
+                    "description": "Show line numbers (content mode only).",
                     "type": "boolean",
                 },
                 "-i": {
                     "default": False,
-                    "description": "Case insensitive search (the `-i` option).",
+                    "description": "Case-insensitive search.",
                     "type": "boolean",
                 },
                 "type": {
                     "anyOf": [{"type": "string"}, {"type": "null"}],
                     "default": None,
-                    "description": "File type to search. Examples: py, rust, js, ts, go, java, etc. More efficient than `glob` for standard file types.",
+                    "description": "File type filter.",
                 },
                 "head_limit": {
                     "anyOf": [{"minimum": 0, "type": "integer"}, {"type": "null"}],
                     "default": 250,
-                    "description": "Limit output to first N lines/entries, equivalent to `| head -N`. Works across all output modes: content (limits output lines), files_with_matches (limits file paths), count_matches (limits count entries). Defaults to 250. Pass 0 for unlimited (use sparingly — large result sets waste context).",
+                    "description": "Max results (0 = unlimited).",
                 },
                 "offset": {
                     "default": 0,
-                    "description": "Skip first N lines/entries before applying head_limit, equivalent to `| tail -n +N | head -N`. Works across all output modes. Defaults to 0.",
+                    "description": "Skip first N results.",
                     "minimum": 0,
                     "type": "integer",
                 },
                 "multiline": {
                     "default": False,
-                    "description": "Enable multiline mode where `.` matches newlines and patterns can span lines (the `-U` and `--multiline-dotall` options). By default, multiline mode is disabled.",
+                    "description": "Multiline regex mode.",
                     "type": "boolean",
                 },
                 "include_ignored": {
                     "default": False,
-                    "description": "Include files that are ignored by `.gitignore`, `.ignore`, and other ignore rules. Useful for searching gitignored artifacts such as build outputs (e.g. `dist/`, `build/`) or `node_modules`. Sensitive files (like `.env`) remain filtered by the sensitive-file protection layer. Defaults to false.",
+                    "description": "Include .gitignore files.",
                     "type": "boolean",
                 },
             },
@@ -398,20 +398,19 @@ def test_write_file_params_schema(write_file_tool: WriteFile):
         {
             "properties": {
                 "path": {
-                    "description": "The path to the file to write. Absolute paths are required when writing files outside the working directory.",
+                    "description": "File path. Absolute paths required outside the working directory.",
                     "type": "string",
                 },
                 "content": {
-                    "description": "The content to write to the file",
+                    "description": "Content to write.",
                     "type": "string",
                 },
                 "mode": {
                     "default": "overwrite",
-                    "description": "The mode to use to write to the file. Two modes are supported: `overwrite` for overwriting the whole file and `append` for appending to the end of an existing file.",
+                    "description": "Write mode: overwrite or append.",
                     "enum": ["overwrite", "append"],
                     "type": "string",
-                },
-            },
+                }, "fix_foramt": {"default": True, "description": "Auto fix file format.", "type": "boolean"}},
             "required": ["path", "content"],
             "type": "object",
         }
@@ -424,7 +423,7 @@ def test_str_replace_file_params_schema(str_replace_file_tool: StrReplaceFile):
         {
             "properties": {
                 "path": {
-                    "description": "The path to the file to edit. Absolute paths are required when editing files outside the working directory.",
+                    "description": "File path. Absolute path required outside working directory.",
                     "type": "string",
                 },
                 "edit": {
@@ -432,16 +431,16 @@ def test_str_replace_file_params_schema(str_replace_file_tool: StrReplaceFile):
                         {
                             "properties": {
                                 "old": {
-                                    "description": "The old string to replace. Can be multi-line.",
+                                    "description": "String to replace.",
                                     "type": "string",
                                 },
                                 "new": {
-                                    "description": "The new string to replace with. Can be multi-line.",
+                                    "description": "Replacement string.",
                                     "type": "string",
                                 },
                                 "replace_all": {
                                     "default": False,
-                                    "description": "Whether to replace all occurrences.",
+                                    "description": "Replace all occurrences.",
                                     "type": "boolean",
                                 },
                             },
@@ -452,16 +451,16 @@ def test_str_replace_file_params_schema(str_replace_file_tool: StrReplaceFile):
                             "items": {
                                 "properties": {
                                     "old": {
-                                        "description": "The old string to replace. Can be multi-line.",
+                                        "description": "String to replace.",
                                         "type": "string",
                                     },
                                     "new": {
-                                        "description": "The new string to replace with. Can be multi-line.",
+                                        "description": "Replacement string.",
                                         "type": "string",
                                     },
                                     "replace_all": {
                                         "default": False,
-                                        "description": "Whether to replace all occurrences.",
+                                        "description": "Replace all occurrences.",
                                         "type": "boolean",
                                     },
                                 },
@@ -471,9 +470,8 @@ def test_str_replace_file_params_schema(str_replace_file_tool: StrReplaceFile):
                             "type": "array",
                         },
                     ],
-                    "description": "The edit(s) to apply to the file. You can provide a single edit or a list of edits here.",
-                },
-            },
+                    "description": "One or more edits.",
+                }, "fix_foramt": {"default": True, "description": "Auto fix file format.", "type": "boolean"}},
             "required": ["path", "edit"],
             "type": "object",
         }
@@ -486,19 +484,19 @@ def test_search_web_params_schema(search_web_tool: SearchWeb):
         {
             "properties": {
                 "query": {
-                    "description": "The query text to search for.",
+                    "description": "Search query.",
                     "type": "string",
                 },
                 "limit": {
                     "default": 5,
-                    "description": "The number of results to return. Typically you do not need to set this value. When the results do not contain what you need, you probably want to give a more concrete query.",
+                    "description": "Number of results. Prefer a specific query over a high limit.",
                     "maximum": 20,
                     "minimum": 1,
                     "type": "integer",
                 },
                 "include_content": {
                     "default": False,
-                    "description": "Whether to include the content of the web pages in the results. It can consume a large amount of tokens when this is set to True. You should avoid enabling this when `limit` is set to a large value.",
+                    "description": "Include full page content. Increases token usage.",
                     "type": "boolean",
                 },
             },
@@ -514,7 +512,7 @@ def test_fetch_url_params_schema(fetch_url_tool: FetchURL):
         {
             "properties": {
                 "url": {
-                    "description": "The URL to fetch content from.",
+                    "description": "URL to fetch.",
                     "type": "string",
                 }
             },

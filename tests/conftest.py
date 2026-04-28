@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from kaos import get_current_kaos, reset_current_kaos, set_current_kaos
 from kaos.local import LocalKaos
 from kaos.path import KaosPath
@@ -280,9 +281,9 @@ def task_stop_tool(runtime: Runtime, approval: Approval) -> Generator[TaskStop]:
 
 
 @pytest.fixture
-def read_file_tool(runtime: Runtime) -> ReadFile:
+def read_file_tool(runtime: Runtime, session: Session) -> ReadFile:
     """Create a ReadFile tool instance."""
-    return ReadFile(runtime)
+    return ReadFile(runtime, session)
 
 
 @pytest.fixture
@@ -297,10 +298,10 @@ def glob_tool(runtime: Runtime) -> Glob:
     return Glob(runtime)
 
 
-@pytest.fixture
-def grep_tool() -> Grep:
+@pytest_asyncio.fixture
+async def grep_tool(runtime: Runtime) -> Grep:
     """Create a Grep tool instance."""
-    return Grep()
+    return Grep(runtime)
 
 
 @pytest.fixture
