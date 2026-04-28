@@ -375,8 +375,7 @@ async def load_agent(
     mcp_configs: list[MCPConfig] | list[dict[str, Any]],
     start_mcp_loading: bool = True,
     # record failed tool-call
-    tool_call_failed_list: list[tuple[str, str, str, str]]  | None = None,
-    custom_system_prompt : Callable[[BuiltinSystemPromptArgs], str] | None = None, # Add by maxwell
+    **custom_arguments # Add by maxwell
 ) -> Agent:
     """
     Load agent from specification file.
@@ -392,6 +391,8 @@ async def load_agent(
     """
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
+    tool_call_failed_list: list[tuple[str, str, str, str]]  | None = custom_arguments.get('tool_call_failed_list', None)
+    custom_system_prompt : Callable[[BuiltinSystemPromptArgs], str] | None =  custom_arguments.get('custom_system_prompt', None)
     if custom_system_prompt is not None:
         system_prompt: str = custom_system_prompt(runtime.builtin_args)
     else:

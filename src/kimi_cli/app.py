@@ -141,8 +141,8 @@ class KimiCLI:
         max_ralph_iterations: int | None = None,
         startup_progress: Callable[[str], None] | None = None,
         defer_mcp_loading: bool = False,
-        tool_call_failed_list: list[tuple[str, str, str, str]]  | None = None, # Add by maxwell
-        custom_system_prompt : Callable[[BuiltinSystemPromptArgs], str] | None = None, # Add by maxwell
+        
+        **load_agent_custom_arguments, # Add by maxwell
     ) -> KimiCLI:
         """
         Create a KimiCLI instance.
@@ -299,8 +299,7 @@ class KimiCLI:
             runtime,
             mcp_configs=mcp_configs or [],
             start_mcp_loading=not defer_mcp_loading,
-            tool_call_failed_list=tool_call_failed_list, # Add by maxwell
-            custom_system_prompt=custom_system_prompt, # Add by maxwell
+            **load_agent_custom_arguments,
         )
         _phase_timings_ms["mcp_ms"] = int((time.monotonic() - _phase_t) * 1000)
 
