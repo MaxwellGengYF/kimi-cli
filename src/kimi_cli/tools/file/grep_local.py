@@ -532,7 +532,11 @@ class Grep(CallableTool2[Params]):
             self._rg_path_task.cancel()
     @override
     async def __call__(self, params: Params, *, _retry: bool = False) -> ToolReturnValue:
-        has_dirty = (self._vfs is not None and len(self._vfs._dirty_files) > 0)
+        has_dirty = (
+            self._vfs is not None
+            and self._vfs.virtual_root.exists()
+            and any(p.is_file() for p in self._vfs.virtual_root.rglob("*"))
+        )
         if has_dirty:
             return await self.backup_grep(params)
 

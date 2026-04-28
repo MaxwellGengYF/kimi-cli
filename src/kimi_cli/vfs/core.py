@@ -26,7 +26,6 @@ class VFS:
     def __init__(self, virtual_root: Path, work_dir: Path) -> None:
         self.virtual_root = Path(virtual_root).resolve()
         self.work_dir = Path(work_dir).resolve()
-        self._dirty_files: set[Path] = set()
         self._lock = threading.Lock()
 
     @staticmethod
@@ -53,7 +52,7 @@ class VFS:
         """Return the current effective path for *path* (virtual if dirty, else original)."""
         rel = self._rel(path)
         with self._lock:
-            if rel in self._dirty_files:
+            if (self.virtual_root / rel).exists():
                 return self.virtual_root / rel
         return self.work_dir / rel
 
@@ -64,7 +63,7 @@ class VFS:
         resolved = self.work_dir / rel
 
         with self._lock:
-            if rel in self._dirty_files:
+            if (self.virtual_root / rel).exists():
                 return self.virtual_root / rel
 
             if not mark_dirty or not resolved.is_file():
@@ -76,7 +75,6 @@ class VFS:
             try:
                 shutil.copyfile(resolved, tmp)
                 tmp.replace(dest)
-                self._dirty_files.add(rel)
             finally:
                 if tmp.exists():
                     tmp.unlink()
@@ -87,7 +85,7 @@ class VFS:
         """Check whether *path* is currently tracked as dirty."""
         rel = self._rel(path)
         with self._lock:
-            return rel in self._dirty_files
+            return (self.virtual_root / rel).exists()
 
 
 def merge(
@@ -108,15 +106,16 @@ def merge(
 
     all_paths: set[Path] = set()
     for vfs in vfs_instances:
-        with vfs._lock:
-            all_paths.update(vfs._dirty_files)
+        if vfs.virtual_root.exists():
+            for p in vfs.virtual_root.rglob("*"):
+                if p.is_file():
+                    all_paths.add(p.relative_to(vfs.virtual_root))
 
     for rel in all_paths:
         holders: list[tuple[int, VFS]] = []
         for idx, vfs in enumerate(vfs_instances):
-            with vfs._lock:
-                if rel in vfs._dirty_files:
-                    holders.append((idx, vfs))
+            if (vfs.virtual_root / rel).is_file():
+                holders.append((idx, vfs))
 
         if not holders:
             continue
@@ -155,8 +154,6 @@ def merge(
                 if tmp.exists():
                     tmp.unlink()
             for _, _, vfs2 in idx_hashes:
-                with vfs2._lock:
-                    vfs2._dirty_files.discard(rel)
                 vfile = vfs2.virtual_root / rel
                 if vfile.exists():
                     vfile.unlink()
