@@ -141,12 +141,13 @@ async def test_hidden_tool_still_handled():
         ),
     )
     result = ts.handle(tool_call)
-    # For async tools, handle() returns an asyncio.Task.
+    # For async tools, handle() returns an asyncio.Future.
     # A ToolNotFoundError would be returned as a sync ToolResult directly.
     if isinstance(result, ToolResult):
         assert not isinstance(result.return_value, KosongToolNotFoundError)
     else:
-        assert isinstance(result, asyncio.Task)
+        assert isinstance(result, asyncio.Future)
+        assert not isinstance(result, asyncio.Task)
         result.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await result

@@ -6,6 +6,7 @@ import importlib
 import inspect
 import json
 import time
+import contextvars
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import timedelta
@@ -367,7 +368,12 @@ class KimiToolset:
 
                 return ToolResult(tool_call_id=tool_call.id, return_value=ret)
 
-            return asyncio.create_task(_call())
+            def _run_call():
+                return asyncio.run(_call())
+
+            loop = asyncio.get_running_loop()
+            ctx = contextvars.copy_context()
+            return loop.run_in_executor(None, ctx.run, _run_call)
         finally:
             current_tool_call.reset(token)
 
