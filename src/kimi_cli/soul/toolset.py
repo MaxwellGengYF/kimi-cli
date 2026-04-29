@@ -491,12 +491,16 @@ class KimiToolset:
         args: list[Any] = []
         if "__init__" in tool_cls.__dict__:
             # the tool class overrides the `__init__` of base class
+            try:
+                type_hints = typing.get_type_hints(tool_cls.__init__)
+            except Exception:
+                type_hints = {}
             for param in inspect.signature(tool_cls).parameters.values():
                 if param.kind == inspect.Parameter.KEYWORD_ONLY:
                     # once we encounter a keyword-only parameter, we stop injecting dependencies
                     break
                 # all positional parameters should be dependencies to be injected
-                annotation = param.annotation
+                annotation = type_hints.get(param.name, param.annotation)
                 if annotation not in dependencies:
                     # Handle Optional[X] / X | None
                     origin = typing.get_origin(annotation)
