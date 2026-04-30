@@ -248,8 +248,8 @@ class KimiToolset:
                             value = value.replace('\n', ' ')
                             lst.append(f'{k}: {value}')
                         lst.append(']')
-                        text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
-                        print(text)
+                        text = f"\n\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
+                        print(text, end='')
                         ret = await tool.call(arguments)
                         if isinstance(ret.output, str):
                             ret.output = sanitize_for_tokenizer(ret.output)
@@ -325,15 +325,15 @@ class KimiToolset:
                 if not ret.is_error:
                     self._recent_tool_calls.clear()
                     time_text = f'LOG: [{tool_call.function.name} spent {(tool_elapsed):.2f} seconds]'
-                    text = f"\033[0;94m{time_text}\033[0m"
+                    text = f"\n\033[0;94m{time_text}\033[0m"
                 else:
                     if self._tool_call_failed_list is not None:
                         self._tool_call_failed_list.append((tool_call.function.name, arg_str, str(ret.output), ret.message))
                     err_msg = ret.brief
                     if not err_msg:
                         err_msg = ret.message
-                    text = f"\033[0;91m{tool_call.function.name} error: {err_msg} [spent {(tool_elapsed):.2f} seconds]\033[0m" # BRIGHT_MAGENTA
-                print(text)
+                    text = f"\n\033[0;91m{tool_call.function.name} error: {err_msg} [spent {(tool_elapsed):.2f} seconds]\033[0m" # BRIGHT_MAGENTA
+                print(text, end='')
                 logger.info(
                     "Tool {tool_name} completed in {elapsed:.1f}s (call_id={call_id})",
                     tool_name=tool_call.function.name,
