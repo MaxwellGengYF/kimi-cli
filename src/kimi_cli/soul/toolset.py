@@ -38,12 +38,17 @@ from kimi_cli.safety_check import sanitize_for_tokenizer
 from kimi_cli.tools import SkipThisTool
 from kimi_cli.wire.types import (
     AudioURLPart,
+    BackgroundTaskDisplayBlock,
+    BriefDisplayBlock,
     ContentPart,
+    DiffDisplayBlock,
     ImageURLPart,
     MCPServerSnapshot,
     MCPStatusSnapshot,
+    ShellDisplayBlock,
     TextPart,
     ThinkPart,
+    TodoDisplayBlock,
     ToolCall,
     ToolCallRequest,
     ToolResult,
@@ -66,6 +71,36 @@ _current_session_id: ContextVar[str] = ContextVar("_current_session_id", default
 _temp_idx = 0
 
 _temp_folder = Path.home() / '.kimi' / 'logs'
+
+def _format_display_blocks(display: list[Any]) -> str | None:
+    if not display:
+        return None
+    parts: list[str] = []
+    for block in display:
+        if isinstance(block, BriefDisplayBlock):
+            if block.text:
+                parts.append(f"\n\033[0;90m{block.text}\033[0m")
+        elif isinstance(block, DiffDisplayBlock):
+            parts.append(f"\n\033[0;94mDiff: {block.path}\033[0m")
+            for line in block.old_text.splitlines():
+                parts.append(f"\n\033[0;91m- {line}\033[0m")
+            for line in block.new_text.splitlines():
+                parts.append(f"\n\033[0;92m+ {line}\033[0m")
+        elif isinstance(block, TodoDisplayBlock):
+            for item in block.items:
+                status = item.status.replace("_", " ").lower()
+                if status == "done":
+                    parts.append(f"\n\033[0;90m- ~~{item.title}~~\033[0m")
+                elif status == "in progress":
+                    parts.append(f"\n\033[0;93m- {item.title} \u2190\033[0m")
+                else:
+                    parts.append(f"\n\033[0;90m- {item.title}\033[0m")
+        elif isinstance(block, ShellDisplayBlock):
+            parts.append(f"\n\033[0;96m$ {block.command}\033[0m")
+        elif isinstance(block, BackgroundTaskDisplayBlock):
+            parts.append(f"\n\033[0;90m[{block.status}] {block.task_id}: {block.description}\033[0m")
+    return "".join(parts) if parts else None
+
 
 def _export_to_temp_file(content: str, ext:str='.log') -> str:
     global _temp_idx
@@ -251,6 +286,9 @@ class KimiToolset:
                         text = f"\n\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
                         print(text, end='')
                         ret = await tool.call(arguments)
+                        display_text = _format_display_blocks(ret.display)
+                        if display_text:
+                            print(display_text, end='')
                         if isinstance(ret.output, str):
                             ret.output = sanitize_for_tokenizer(ret.output)
                         elif isinstance(ret.output, list):
