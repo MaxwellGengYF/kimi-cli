@@ -1392,10 +1392,8 @@ class FlowRunner:
         nodes["R2"] = FlowNode(
             id="R2",
             label=(
-                f"{prompt_text}. (You are running in an automated loop where the same "
-                "prompt is fed repeatedly. Only choose STOP when the task is fully complete. "
-                "Including it will stop further iterations. If you are not 100% sure, "
-                "choose CONTINUE.)"
+                f"{prompt_text}. (Automated loop — choose STOP only when fully complete. "
+                "If unsure, choose CONTINUE.)"
             ).strip(),
             kind="decision",
         )
