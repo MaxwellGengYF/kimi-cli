@@ -70,7 +70,7 @@ current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=Non
 _current_session_id: ContextVar[str] = ContextVar("_current_session_id", default="")
 _temp_idx = 0
 
-_temp_folder = Path.home() / '.kimi' / 'logs'
+_temp_folder: Path = Path.home() / '.kimi' / 'logs'
 
 def _format_display_blocks(display: list[Any]) -> str | None:
     if not display:
@@ -107,6 +107,7 @@ def _export_to_temp_file(content: str, ext:str='.log') -> str:
     """Export content to a temporary file and return the file path."""
     id = _temp_idx
     _temp_idx += 1
+    _temp_folder.mkdir(parents=True, exist_ok=True)
     name = str(_temp_folder / (str(id) + ext))
     # Append content if key exists, otherwise overwrite/create
     with open(name, 'w', encoding='utf-8') as f:
