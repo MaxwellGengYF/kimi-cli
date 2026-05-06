@@ -79,27 +79,27 @@ def _format_display_blocks(display: list[Any]) -> str | None:
     for block in display:
         if isinstance(block, BriefDisplayBlock):
             if block.text:
-                parts.append(f"\n\033[0;90m{block.text}\033[0m")
+                parts.append(f"\033[0;90m{block.text}\033[0m")
         elif isinstance(block, DiffDisplayBlock):
-            parts.append(f"\n\033[0;94mDiff: {block.path}\033[0m")
+            parts.append(f"\033[0;94mDiff: {block.path}\033[0m")
             for line in block.old_text.splitlines():
-                parts.append(f"\n\033[0;91m- {line}\033[0m")
+                parts.append(f"\033[0;91m- {line}\033[0m")
             for line in block.new_text.splitlines():
-                parts.append(f"\n\033[0;92m+ {line}\033[0m")
+                parts.append(f"\033[0;92m+ {line}\033[0m")
         elif isinstance(block, TodoDisplayBlock):
             for item in block.items:
                 status = item.status.replace("_", " ").lower()
                 if status == "done":
-                    parts.append(f"\n\033[0;90m- ~~{item.title}~~\033[0m")
+                    parts.append(f"\033[0;90m- ~~{item.title}~~\033[0m")
                 elif status == "in progress":
-                    parts.append(f"\n\033[0;93m- {item.title} \u2190\033[0m")
+                    parts.append(f"\033[0;93m- {item.title} \u2190\033[0m")
                 else:
-                    parts.append(f"\n\033[0;90m- {item.title}\033[0m")
+                    parts.append(f"\033[0;90m- {item.title}\033[0m")
         elif isinstance(block, ShellDisplayBlock):
-            parts.append(f"\n\033[0;96m$ {block.command}\033[0m")
+            parts.append(f"\033[0;96m$ {block.command}\033[0m")
         elif isinstance(block, BackgroundTaskDisplayBlock):
-            parts.append(f"\n\033[0;90m[{block.status}] {block.task_id}: {block.description}\033[0m")
-    return "".join(parts) if parts else None
+            parts.append(f"\033[0;90m[{block.status}] {block.task_id}: {block.description}\033[0m")
+    return ("\n".join(parts)).strip() if parts else None
 
 
 def _export_to_temp_file(content: str, ext:str='.log') -> str:
@@ -283,12 +283,12 @@ class KimiToolset:
                             value = value.replace('\n', ' ')
                             lst.append(f'{k}: {value}')
                         lst.append(']')
-                        text = f"\n\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
-                        print(text, end='')
+                        text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
+                        print(text)
                         ret = await tool.call(arguments)
                         display_text = _format_display_blocks(ret.display)
                         if display_text:
-                            print(display_text, end='')
+                            print(display_text)
                         if isinstance(ret.output, str):
                             ret.output = sanitize_for_tokenizer(ret.output)
                         elif isinstance(ret.output, list):
@@ -363,15 +363,15 @@ class KimiToolset:
                 if not ret.is_error:
                     self._recent_tool_calls.clear()
                     time_text = f'LOG: [{tool_call.function.name} spent {(tool_elapsed):.2f} seconds]'
-                    text = f"\n\033[0;94m{time_text}\033[0m"
+                    text = f"\033[0;94m{time_text}\033[0m"
                 else:
                     if self._tool_call_failed_list is not None:
                         self._tool_call_failed_list.append((tool_call.function.name, arg_str, str(ret.output), ret.message))
                     err_msg = ret.brief
                     if not err_msg:
                         err_msg = ret.message
-                    text = f"\n\033[0;91m{tool_call.function.name} error: {err_msg} [spent {(tool_elapsed):.2f} seconds]\033[0m" # BRIGHT_MAGENTA
-                print(text, end='')
+                    text = f"\033[0;91m{tool_call.function.name} error: {err_msg} [spent {(tool_elapsed):.2f} seconds]\033[0m" # BRIGHT_MAGENTA
+                print(text)
                 logger.info(
                     "Tool {tool_name} completed in {elapsed:.1f}s (call_id={call_id})",
                     tool_name=tool_call.function.name,
