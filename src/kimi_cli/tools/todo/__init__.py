@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, Literal, cast, override
 
 from kosong.tooling import CallableTool2, ToolReturnValue
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from kimi_cli.session_state import TodoItemState
 from kimi_cli.soul.agent import Runtime
@@ -13,8 +13,16 @@ from kimi_cli.utils.logging import logger
 
 
 class Todo(BaseModel):
-    title: str = Field(description="Title", min_length=1)
+    title: str = Field(description="Title", min_length=1, max_length=65536)
     status: Literal["pending", "in_progress", "done"] = Field(description="Status")
+
+    @field_validator("title")
+    @classmethod
+    def _validate_title(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Title cannot be empty or contain only whitespace")
+        return stripped
 
 
 class Params(BaseModel):
@@ -55,6 +63,28 @@ class SetTodoList(CallableTool2[Params]):
     def _write_todos(self, todos: list[Todo], *, force_replace: bool) -> ToolReturnValue:
         """Persist the todo list and return confirmation."""
         old_todos = self._load_todos()
+        messages: list[str] = []
+
+        # Validate new todos
+        dup = self._find_duplicate_titles(todos)
+        if dup:
+            return ToolReturnValue(
+                is_error=True,
+                output=f"Error: Duplicate todo titles found: {dup}",
+                message=f"Duplicate todo titles found: {dup}",
+                display=[],
+            )
+
+        if len(todos) > 4096:
+            return ToolReturnValue(
+                is_error=True,
+                output="Error: Todo list exceeds maximum limit of 4096 items.",
+                message="Todo list exceeds maximum limit of 4096 items.",
+                display=[],
+            )
+
+        if force_replace:
+            messages.append("Warning: force_replace=True bypasses all validation logic.")
 
         if not force_replace and old_todos:
             result = self._merge_todos(old_todos, todos)
@@ -62,15 +92,62 @@ class SetTodoList(CallableTool2[Params]):
                 return result
             todos = result
 
-        self._save_todos(todos)
+            # Detect regression: done items changed back to pending/in_progress
+            old_status_map = {t.title: t.status for t in old_todos}
+            regressions: list[str] = []
+            for t in todos:
+                if old_status_map.get(t.title) == "done" and t.status != "done":
+                    regressions.append(t.title)
+                    t.status = "done"
+            if regressions:
+                save_error = self._save_todos(todos)
+                if save_error:
+                    return ToolReturnValue(
+                        is_error=True,
+                        output=save_error,
+                        message="Failed to save todos.",
+                        display=[],
+                    )
+                items = [TodoDisplayItem(title=todo.title, status=todo.status) for todo in todos]
+                reg_msg = (
+                    "Error: Cannot regress completed todos back to pending/in_progress: "
+                    + ", ".join(regressions)
+                )
+                return ToolReturnValue(
+                    is_error=True,
+                    output=reg_msg,
+                    message="Cannot regress completed todos.",
+                    display=[TodoDisplayBlock(items=items)],
+                )
+
+        save_error = self._save_todos(todos)
+        if save_error:
+            return ToolReturnValue(
+                is_error=True,
+                output=save_error,
+                message="Failed to save todos.",
+                display=[],
+            )
 
         items = [TodoDisplayItem(title=todo.title, status=todo.status) for todo in todos]
+        output = "Todo list updated"
+        if messages:
+            output += "\n" + "\n".join(messages)
         return ToolReturnValue(
             is_error=False,
-            output="Todo list updated",
+            output=output,
             message="Todo list updated",
             display=[TodoDisplayBlock(items=items)],
         )
+
+    @staticmethod
+    def _find_duplicate_titles(todos: list[Todo]) -> str | None:
+        seen: set[str] = set()
+        for t in todos:
+            if t.title in seen:
+                return t.title
+            seen.add(t.title)
+        return None
 
     def _merge_todos(
         self, old_todos: list[Todo], new_todos: list[Todo]
@@ -116,6 +193,10 @@ class SetTodoList(CallableTool2[Params]):
                 display=[],
             )
 
+        if all_old_done:
+            # When all old todos are done, replace instead of incremental update
+            return new_todos
+
         if new_titles <= old_titles:
             # Incremental update: update statuses for matching titles, preserve order
             status_map = {t.title: t.status for t in old_todos}
@@ -124,7 +205,6 @@ class SetTodoList(CallableTool2[Params]):
             merged = [Todo(title=t.title, status=status_map[t.title]) for t in old_todos]
             return merged
 
-        # Old todos are all done (or empty), allow replacement with new list
         return new_todos
 
     # ---- Read mode ---------------------------------------------------------
@@ -152,14 +232,15 @@ class SetTodoList(CallableTool2[Params]):
 
     # ---- Persistence -------------------------------------------------------
 
-    def _save_todos(self, todos: list[Todo]) -> None:
-        """Persist todos to the appropriate state file."""
+    def _save_todos(self, todos: list[Todo]) -> str | None:
+        """Persist todos to the appropriate state file. Returns error message on failure."""
         items = [TodoItemState(title=t.title, status=t.status) for t in todos]
 
         if self._runtime.role == "root":
             self._save_root_todos(items)
+            return None
         else:
-            self._save_subagent_todos(items)
+            return self._save_subagent_todos(items)
 
     def _load_todos(self) -> list[Todo]:
         """Load todos from the appropriate state file."""
@@ -187,13 +268,14 @@ class SetTodoList(CallableTool2[Params]):
                 logger.warning("Skipping malformed todo item in root state: {t}", t=t)
         return result
 
-    def _save_subagent_todos(self, items: list[TodoItemState]) -> None:
+    def _save_subagent_todos(self, items: list[TodoItemState]) -> str | None:
         state_file = self._subagent_state_file()
         if state_file is None:
-            return
+            return "Error: Unable to save subagent todos: state file is not available."
         data = self._read_subagent_state(state_file)
         data["todos"] = [item.model_dump() for item in items]
         self._write_subagent_state(state_file, data)
+        return None
 
     def _load_subagent_todos(self) -> list[Todo]:
         state_file = self._subagent_state_file()

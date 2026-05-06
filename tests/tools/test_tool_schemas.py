@@ -128,12 +128,21 @@ def test_set_todo_list_params_schema(set_todo_list_tool: SetTodoList):
                             },
                             "type": "array",
                         },
-                        {"type": "null"},
-                    ],
+                        {"properties": {
+    "title": {"description": "Title", "minLength": 1, "type": "string"},
+    "status": {
+        "description": "Status",
+        "enum": ["pending", "in_progress", "done"],
+        "type": "string",
+    },
+}, "required": ["title", "status"], "type": "object"}, {"type": "null"}],
                     "default": None,
-                    "description": "Updated list. Omit to return current list unchanged.",
-                }
-            },
+                    "description": "Updated list, a single Todo item, or omit to return current list unchanged.",
+                }, "force_replace": {
+    "default": False,
+    "description": "If true, directly replace the old todo-list without validation.",
+    "type": "boolean",
+}},
             "type": "object",
         }
     )

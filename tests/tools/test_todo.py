@@ -81,7 +81,8 @@ class TestSetTodoListOutputNotEmpty:
         clear_params = Params(todos=[], force_replace=True)
         result = await set_todo_list_tool(clear_params)
         assert not result.is_error
-        assert result.output == "Todo list updated"
+        assert result.output.startswith("Todo list updated")
+        assert "force_replace" in result.output
 
         # Verify cleared
         read_params = Params(todos=None)
@@ -230,6 +231,69 @@ class TestSetTodoListIncrementalUpdate:
         read_result = await set_todo_list_tool(Params(todos=None))
         assert "[pending] A" in read_result.output
         assert "[done] B" in read_result.output
+
+
+class TestSetTodoListValidation:
+    """Test validation rules for new todos."""
+
+    async def test_duplicate_titles_rejected(self, set_todo_list_tool: SetTodoList):
+        """Duplicate titles in new todos should return an error."""
+        params = Params(
+            todos=[
+                Todo(title="Task A", status="pending"),
+                Todo(title="Task B", status="in_progress"),
+                Todo(title="Task A", status="done"),
+            ]
+        )
+        result = await set_todo_list_tool(params)
+        assert result.is_error
+        assert "Duplicate todo titles found" in result.output
+
+    async def test_title_too_long_rejected(self, set_todo_list_tool: SetTodoList):
+        """Titles longer than 65536 characters should be rejected at model level."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            Todo(title="x" * 65537, status="pending")
+
+    async def test_whitespace_only_title_rejected(self, set_todo_list_tool: SetTodoList):
+        """Titles that are only whitespace should be rejected at model level."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            Todo(title="   ", status="pending")
+
+    async def test_todo_count_limit(self, set_todo_list_tool: SetTodoList):
+        """More than 4096 todos should return an error."""
+        todos = [Todo(title=f"Task {i}", status="pending") for i in range(4097)]
+        params = Params(todos=todos)
+        result = await set_todo_list_tool(params)
+        assert result.is_error
+        assert "exceeds maximum limit of 4096" in result.output
+
+    async def test_force_replace_outputs_warning(self, set_todo_list_tool: SetTodoList):
+        """force_replace=True should include a warning in the output."""
+        params = Params(todos=[Todo(title="Task", status="pending")], force_replace=True)
+        result = await set_todo_list_tool(params)
+        assert not result.is_error
+        assert "force_replace=True bypasses all validation logic" in result.output
+
+    async def test_status_regression_blocked(self, set_todo_list_tool: SetTodoList):
+        """Changing a done todo back to pending/in_progress should be blocked."""
+        await set_todo_list_tool(
+            Params(todos=[Todo(title="A", status="pending"), Todo(title="B", status="done")])
+        )
+
+        result = await set_todo_list_tool(
+            Params(todos=[Todo(title="A", status="done"), Todo(title="B", status="pending")])
+        )
+        assert result.is_error
+        assert "Cannot regress completed todos" in result.output
+
+        # B should remain done
+        read_result = await set_todo_list_tool(Params(todos=None))
+        assert "[done] B" in read_result.output
+        assert "[done] A" in read_result.output
 
 
 class TestSetTodoListNewListValidation:
@@ -388,8 +452,8 @@ class TestSetTodoListSubagent:
         assert "Root task" in result.output
         assert "Sub task" not in result.output
 
-    async def test_subagent_no_store_or_id_graceful(self, runtime: Runtime):
-        """When subagent_store or subagent_id is None, save is a no-op and load returns empty."""
+    async def test_subagent_no_store_or_id_returns_error(self, runtime: Runtime):
+        """When subagent_store or subagent_id is None, save returns an error."""
         subagent_runtime = runtime.copy_for_subagent(
             agent_id="test-sub-2",
             subagent_type="coder",
@@ -400,10 +464,10 @@ class TestSetTodoListSubagent:
 
         tool = SetTodoList(subagent_runtime)
 
-        # Write should silently succeed (no-op)
+        # Write should return error since state file is unavailable
         result = await tool(Params(todos=[Todo(title="Ghost task", status="pending")]))
-        assert not result.is_error
-        assert result.output == "Todo list updated"
+        assert result.is_error
+        assert "Unable to save subagent todos" in result.output
 
         # Read should return empty
         result = await tool(Params(todos=None))
