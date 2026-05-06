@@ -128,6 +128,7 @@ def session(temp_work_dir: KaosPath, temp_share_dir: Path) -> Session:
         state=SessionState(),
         title="Test Session",
         updated_at=0.0,
+        custom_data={},
     )
 
 

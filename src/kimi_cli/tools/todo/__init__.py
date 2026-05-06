@@ -18,9 +18,13 @@ class Todo(BaseModel):
 
 
 class Params(BaseModel):
-    todos: list[Todo] | None = Field(
+    todos: list[Todo] | Todo | None = Field(
         default=None,
-        description="Updated list. Omit to return current list unchanged.",
+        description="Updated list, a single Todo item, or omit to return current list unchanged.",
+    )
+    force_replace: bool = Field(
+        default=False,
+        description="If true, directly replace the old todo-list without validation.",
     )
 
 
@@ -37,12 +41,27 @@ class SetTodoList(CallableTool2[Params]):
     async def __call__(self, params: Params) -> ToolReturnValue:
         if params.todos is None:
             return self._read_todos()
-        return self._write_todos(params.todos)
+
+        new_todos: list[Todo]
+        if isinstance(params.todos, Todo):
+            new_todos = [params.todos]
+        else:
+            new_todos = params.todos
+
+        return self._write_todos(new_todos, force_replace=params.force_replace)
 
     # ---- Write mode --------------------------------------------------------
 
-    def _write_todos(self, todos: list[Todo]) -> ToolReturnValue:
+    def _write_todos(self, todos: list[Todo], *, force_replace: bool) -> ToolReturnValue:
         """Persist the todo list and return confirmation."""
+        old_todos = self._load_todos()
+
+        if not force_replace and old_todos:
+            result = self._merge_todos(old_todos, todos)
+            if isinstance(result, ToolReturnValue):
+                return result
+            todos = result
+
         self._save_todos(todos)
 
         items = [TodoDisplayItem(title=todo.title, status=todo.status) for todo in todos]
@@ -52,6 +71,61 @@ class SetTodoList(CallableTool2[Params]):
             message="Todo list updated",
             display=[TodoDisplayBlock(items=items)],
         )
+
+    def _merge_todos(
+        self, old_todos: list[Todo], new_todos: list[Todo]
+    ) -> ToolReturnValue | list[Todo]:
+        """Validate and merge new todos into old todos.
+
+        Returns a ToolReturnValue on error, or the merged todo list on success.
+        """
+        if not old_todos:
+            return new_todos
+
+        # Empty list: treat as clear operation
+        if not new_todos:
+            all_old_done = all(t.status == "done" for t in old_todos)
+            if not all_old_done:
+                return ToolReturnValue(
+                    is_error=True,
+                    output=(
+                        "Error: Cannot clear todos while old todos are not all done. "
+                        f"Unfinished: "
+                        + ", ".join(t.title for t in old_todos if t.status != "done")
+                    ),
+                    message="Cannot clear todos while old todos are not all done.",
+                    display=[],
+                )
+            return new_todos
+
+        old_titles = {t.title for t in old_todos}
+        new_titles = {t.title for t in new_todos}
+
+        has_new_titles = bool(new_titles - old_titles)
+        all_old_done = all(t.status == "done" for t in old_todos)
+
+        if has_new_titles and not all_old_done:
+            return ToolReturnValue(
+                is_error=True,
+                output=(
+                    "Error: Cannot replace with new todos while old todos are not all done. "
+                    f"Unfinished: "
+                    + ", ".join(t.title for t in old_todos if t.status != "done")
+                ),
+                message="Cannot replace with new todos while old todos are not all done.",
+                display=[],
+            )
+
+        if new_titles <= old_titles:
+            # Incremental update: update statuses for matching titles, preserve order
+            status_map = {t.title: t.status for t in old_todos}
+            for new_todo in new_todos:
+                status_map[new_todo.title] = new_todo.status
+            merged = [Todo(title=t.title, status=status_map[t.title]) for t in old_todos]
+            return merged
+
+        # Old todos are all done (or empty), allow replacement with new list
+        return new_todos
 
     # ---- Read mode ---------------------------------------------------------
 

@@ -36,6 +36,16 @@ class Params(BaseModel):
         default=MAX_LINES,
         ge=1,
     )
+    max_char: int = Field(
+        description="Maximum number of characters to return.",
+        default=65536,
+        ge=0,
+    )
+    char_offset: int = Field(
+        description="Character offset to start returning from.",
+        default=0,
+        ge=0,
+    )
 
     @model_validator(mode="after")
     def _validate_line_offset(self) -> "Params":
@@ -158,9 +168,13 @@ class ReadFile(CallableTool2[Params]):
             assert params.line_offset != 0
 
             if params.line_offset < 0:
-                return await self._read_tail(p, params)
+                result = await self._read_tail(p, params)
             else:
-                return await self._read_forward(p, params)
+                result = await self._read_forward(p, params)
+
+            if isinstance(result, ToolOk) and isinstance(result.output, str):
+                result.output = result.output[params.char_offset:params.max_char]
+            return result
         except Exception as e:
             logger.warning("ReadFile failed: {path}: {error}", path=params.path, error=e)
             return ToolError(

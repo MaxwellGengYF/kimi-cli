@@ -69,14 +69,16 @@ class TestSetTodoListOutputNotEmpty:
         assert not result.is_error
         assert result.output  # non-empty even when no todos
 
-    async def test_write_empty_list_clears_todos(self, set_todo_list_tool: SetTodoList):
-        """Passing an empty list [] should clear all todos."""
+    async def test_write_empty_list_clears_todos_when_force_replace(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """Passing an empty list [] with force_replace=True clears all todos."""
         # Write some todos first
         write_params = Params(todos=[Todo(title="Task A", status="pending")])
         await set_todo_list_tool(write_params)
 
-        # Clear with empty list
-        clear_params = Params(todos=[])
+        # Clear with empty list + force_replace
+        clear_params = Params(todos=[], force_replace=True)
         result = await set_todo_list_tool(clear_params)
         assert not result.is_error
         assert result.output == "Todo list updated"
@@ -86,6 +88,35 @@ class TestSetTodoListOutputNotEmpty:
         result = await set_todo_list_tool(read_params)
         assert isinstance(result.output, str)
         assert "empty" in result.output.lower() or result.output.strip() == "Todo list is empty."
+
+    async def test_write_empty_list_without_force_replace_errors(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """Passing an empty list [] without force_replace when old todos are
+        not all done should return an error."""
+        write_params = Params(todos=[Todo(title="Task A", status="pending")])
+        await set_todo_list_tool(write_params)
+
+        clear_params = Params(todos=[])
+        result = await set_todo_list_tool(clear_params)
+        assert result.is_error
+        assert "Cannot clear todos" in result.output
+
+    async def test_write_empty_list_when_all_done_clears(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """Passing an empty list [] when all old todos are done should clear."""
+        write_params = Params(todos=[Todo(title="Task A", status="done")])
+        await set_todo_list_tool(write_params)
+
+        clear_params = Params(todos=[])
+        result = await set_todo_list_tool(clear_params)
+        assert not result.is_error
+        assert result.output == "Todo list updated"
+
+        read_params = Params(todos=None)
+        result = await set_todo_list_tool(read_params)
+        assert "empty" in result.output.lower()
 
     async def test_root_todos_persisted_to_disk(
         self, set_todo_list_tool: SetTodoList, runtime: Runtime
@@ -124,6 +155,202 @@ class TestSetTodoListOutputNotEmpty:
         read_params = Params(todos=None)
         result = await set_todo_list_tool(read_params)
         assert result.display == []
+
+
+class TestSetTodoListIncrementalUpdate:
+    """Test incremental update behavior when new todos are a subset of old."""
+
+    async def test_incremental_update_status(self, set_todo_list_tool: SetTodoList):
+        """Updating a subset of todos should only change their statuses."""
+        await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="A", status="pending"),
+                    Todo(title="B", status="in_progress"),
+                    Todo(title="C", status="pending"),
+                ]
+            )
+        )
+
+        # Update only B and C
+        result = await set_todo_list_tool(
+            Params(todos=[Todo(title="B", status="done"), Todo(title="C", status="in_progress")])
+        )
+        assert not result.is_error
+
+        # Read back and verify
+        read_result = await set_todo_list_tool(Params(todos=None))
+        assert "[pending] A" in read_result.output
+        assert "[done] B" in read_result.output
+        assert "[in_progress] C" in read_result.output
+
+    async def test_incremental_update_preserves_order(self, set_todo_list_tool: SetTodoList):
+        """Incremental update should preserve the original order of todos."""
+        await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="First", status="pending"),
+                    Todo(title="Second", status="pending"),
+                    Todo(title="Third", status="pending"),
+                ]
+            )
+        )
+
+        # Update in reverse order
+        await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="Third", status="done"),
+                    Todo(title="First", status="done"),
+                ]
+            )
+        )
+
+        read_result = await set_todo_list_tool(Params(todos=None))
+        lines = read_result.output.splitlines()
+        assert lines[1] == "- [done] First"
+        assert lines[2] == "- [pending] Second"
+        assert lines[3] == "- [done] Third"
+
+    async def test_single_todo_update(self, set_todo_list_tool: SetTodoList):
+        """Passing a single Todo instance should update just that item."""
+        await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="A", status="pending"),
+                    Todo(title="B", status="pending"),
+                ]
+            )
+        )
+
+        # Pass single Todo, not a list
+        result = await set_todo_list_tool(Params(todos=Todo(title="B", status="done")))
+        assert not result.is_error
+
+        read_result = await set_todo_list_tool(Params(todos=None))
+        assert "[pending] A" in read_result.output
+        assert "[done] B" in read_result.output
+
+
+class TestSetTodoListNewListValidation:
+    """Test error behavior when new todos contain items not in the old list."""
+
+    async def test_new_todo_with_old_incomplete_returns_error(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """If old todos are not all done and new list has new titles, return error."""
+        await set_todo_list_tool(
+            Params(todos=[Todo(title="Old task", status="pending")])
+        )
+
+        result = await set_todo_list_tool(
+            Params(todos=[Todo(title="New task", status="pending")])
+        )
+        assert result.is_error
+        assert "Cannot replace with new todos" in result.output
+        assert "Old task" in result.output
+
+    async def test_new_todo_when_all_old_done_is_allowed(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """If all old todos are done, new list with new titles is allowed."""
+        await set_todo_list_tool(
+            Params(todos=[Todo(title="Old task", status="done")])
+        )
+
+        result = await set_todo_list_tool(
+            Params(todos=[Todo(title="New task", status="pending")])
+        )
+        assert not result.is_error
+
+        read_result = await set_todo_list_tool(Params(todos=None))
+        assert "New task" in read_result.output
+        assert "Old task" not in read_result.output
+
+    async def test_force_replace_bypasses_validation(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """force_replace=True should bypass the incomplete-todo check."""
+        await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="Old task", status="pending"),
+                    Todo(title="Another old", status="in_progress"),
+                ]
+            )
+        )
+
+        result = await set_todo_list_tool(
+            Params(
+                todos=[Todo(title="New task", status="done")],
+                force_replace=True,
+            )
+        )
+        assert not result.is_error
+
+        read_result = await set_todo_list_tool(Params(todos=None))
+        assert "New task" in read_result.output
+        assert "Old task" not in read_result.output
+
+    async def test_new_todo_mixed_with_old_titles_errors(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """Even if some titles overlap, any new title with incomplete old = error."""
+        await set_todo_list_tool(
+            Params(todos=[Todo(title="Keep me", status="pending")])
+        )
+
+        result = await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="Keep me", status="done"),
+                    Todo(title="Brand new", status="pending"),
+                ]
+            )
+        )
+        assert result.is_error
+        assert "Cannot replace with new todos" in result.output
+
+    async def test_subset_update_does_not_error(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """A strict subset of old titles should always succeed (incremental update)."""
+        await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="A", status="pending"),
+                    Todo(title="B", status="pending"),
+                ]
+            )
+        )
+
+        result = await set_todo_list_tool(Params(todos=[Todo(title="A", status="done")]))
+        assert not result.is_error
+
+    async def test_new_todo_when_old_empty_succeeds(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """Writing new todos when old list is empty should never error."""
+        result = await set_todo_list_tool(
+            Params(todos=[Todo(title="New task", status="pending")])
+        )
+        assert not result.is_error
+
+    async def test_clear_when_old_empty_succeeds(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """Writing an empty list when old list is empty should succeed."""
+        result = await set_todo_list_tool(Params(todos=[]))
+        assert not result.is_error
+
+    async def test_single_todo_when_old_empty_succeeds(
+        self, set_todo_list_tool: SetTodoList
+    ):
+        """Writing a single Todo when old list is empty should succeed."""
+        result = await set_todo_list_tool(
+            Params(todos=Todo(title="Only task", status="in_progress"))
+        )
+        assert not result.is_error
 
 
 class TestSetTodoListSubagent:
@@ -246,3 +473,46 @@ class TestSetTodoListSubagent:
         assert "Also valid" in result.output
         # The malformed item should be silently skipped
         assert "bad" not in result.output
+
+    async def test_subagent_incremental_update(self, runtime: Runtime):
+        """Incremental update should work in subagent context."""
+        subagent_runtime = runtime.copy_for_subagent(
+            agent_id="test-sub-incr",
+            subagent_type="coder",
+        )
+        assert subagent_runtime.subagent_store is not None
+        subagent_runtime.subagent_store.instance_dir("test-sub-incr", create=True)
+
+        tool = SetTodoList(subagent_runtime)
+        await tool(
+            Params(
+                todos=[
+                    Todo(title="Sub A", status="pending"),
+                    Todo(title="Sub B", status="pending"),
+                ]
+            )
+        )
+
+        # Incremental update
+        result = await tool(Params(todos=[Todo(title="Sub A", status="done")]))
+        assert not result.is_error
+
+        read_result = await tool(Params(todos=None))
+        assert "[done] Sub A" in read_result.output
+        assert "[pending] Sub B" in read_result.output
+
+    async def test_subagent_new_list_with_incomplete_errors(self, runtime: Runtime):
+        """New list validation should work in subagent context."""
+        subagent_runtime = runtime.copy_for_subagent(
+            agent_id="test-sub-err",
+            subagent_type="coder",
+        )
+        assert subagent_runtime.subagent_store is not None
+        subagent_runtime.subagent_store.instance_dir("test-sub-err", create=True)
+
+        tool = SetTodoList(subagent_runtime)
+        await tool(Params(todos=[Todo(title="Sub task", status="in_progress")]))
+
+        result = await tool(Params(todos=[Todo(title="New sub task", status="pending")]))
+        assert result.is_error
+        assert "Cannot replace with new todos" in result.output
