@@ -1,5 +1,3 @@
-import json
-import demjson3
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, override
@@ -31,10 +29,6 @@ class Params(BaseModel):
     mode: Literal["overwrite", "append"] = Field(
         description="Write mode: overwrite or append.",
         default="overwrite",
-    )
-    fix_foramt: bool = Field(
-        default=True,
-        description='Auto fix file format.'
     )
 
 
@@ -160,16 +154,6 @@ class WriteFile(CallableTool2[Params]):
                 fmt_error = check_json_text(new_text)
             elif file_path_str.lower().endswith(".xml"):
                 fmt_error = check_xml_text(new_text)
-
-            if fmt_error and is_json and params.fix_foramt:
-                try:
-                    decoded = demjson3.decode(new_text, encoding="utf-8", strict=False)
-                    new_text = json.dumps(decoded)
-                    fmt_error = None
-                except demjson3.JSONDecodeError as e:
-                    fmt_error = f"JSON decode error: {str(e)}"
-                except Exception as exc:
-                    fmt_error = f"failed to validate JSON file: {str(exc)}"
 
             if fmt_error:
                 return ToolError(

@@ -5,7 +5,7 @@ AsyncTransport: HTTP sending with 401 fallback, disk persistence, startup retry.
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 import os
 import time
 import uuid
@@ -256,7 +256,7 @@ class AsyncTransport:
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
             with open(fd, "w", encoding="utf-8") as f:
                 for event in events:
-                    f.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")))
+                    f.write(orjson.dumps(event).decode())
                     f.write("\n")
             logger.debug(
                 "Saved {count} telemetry events to {path}",
@@ -290,7 +290,7 @@ class AsyncTransport:
                     for line in f:
                         line = line.strip()
                         if line:
-                            events.append(json.loads(line))
+                            events.append(orjson.loads(line))
                 if events:
                     # Same outbound-only rules as ``send``; disk JSONL stored
                     # the bare, nested client-side shape.
@@ -305,7 +305,7 @@ class AsyncTransport:
             except _TransientError:
                 # Still failing — leave file for next startup
                 logger.debug("Retry of {path} failed, will try again later", path=path)
-            except json.JSONDecodeError:
+            except orjson.JSONDecodeError:
                 # Corrupted file — delete it
                 logger.debug("Removing corrupted telemetry file: {path}", path=path)
                 path.unlink(missing_ok=True)

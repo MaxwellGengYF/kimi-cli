@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
+import orjson
 from typing import Any, Literal, cast
 
 import acp  # type: ignore[reportMissingTypeStubs]
@@ -201,7 +201,7 @@ class WireServer:
             line = raw_line.decode("utf-8", errors="replace").strip()
 
             try:
-                msg_json = json.loads(line)
+                msg_json = orjson.loads(line)
             except ValueError:
                 logger.error("Invalid JSON line: {line}", line=line)
                 await self._send_msg(

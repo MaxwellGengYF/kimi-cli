@@ -7,6 +7,7 @@ for both the Web API and CLI slash commands (/undo, /fork).
 from __future__ import annotations
 
 import json
+import orjson
 import mimetypes
 import re
 import shutil
@@ -53,8 +54,8 @@ def enumerate_turns(wire_path: Path) -> list[TurnInfo]:
                 continue
 
             try:
-                record: dict[str, Any] = json.loads(stripped)
-            except json.JSONDecodeError:
+                record: dict[str, Any] = orjson.loads(stripped)
+            except orjson.JSONDecodeError:
                 continue
 
             if record.get("type") == "metadata":
@@ -120,8 +121,8 @@ def truncate_wire_at_turn(wire_path: Path, turn_index: int) -> list[str]:
                 continue
 
             try:
-                record: dict[str, Any] = json.loads(stripped)
-            except json.JSONDecodeError:
+                record: dict[str, Any] = orjson.loads(stripped)
+            except orjson.JSONDecodeError:
                 continue
 
             # Always keep metadata header
@@ -192,8 +193,8 @@ def truncate_context_at_turn(context_path: Path, turn_index: int) -> list[str]:
                 continue
 
             try:
-                record: dict[str, Any] = json.loads(stripped)
-            except json.JSONDecodeError:
+                record: dict[str, Any] = orjson.loads(stripped)
+            except orjson.JSONDecodeError:
                 continue
 
             if record.get("role") == "user" and not _is_checkpoint_user_message(record):

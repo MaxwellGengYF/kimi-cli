@@ -9,6 +9,7 @@ except ModuleNotFoundError as exc:
 import base64
 import copy
 import json
+import orjson
 import mimetypes
 from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Self, TypedDict, Unpack, cast
@@ -342,7 +343,7 @@ class GoogleGenAIStreamedMessage:
                 id=tool_call_id,
                 function=ToolCall.FunctionBody(
                     name=func_call.name,
-                    arguments=json.dumps(func_call.args) if func_call.args else "{}",
+                    arguments=orjson.dumps(func_call.args).decode() if func_call.args else "{}",
                 ),
                 extras={
                     "thought_signature_b64": thought_signature_b64,
@@ -653,8 +654,10 @@ def message_to_google_genai(message: Message) -> Content:
     # Handle tool calls for assistant messages
     for tool_call in message.tool_calls or []:
         if tool_call.function.arguments:
+            from kosong.utils.jsonx import loads_relaxed
+
             try:
-                parsed_arguments = json.loads(tool_call.function.arguments, strict=False)
+                parsed_arguments = loads_relaxed(tool_call.function.arguments)
             except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
                 raise ChatProviderError("Tool call arguments must be valid JSON.") from exc
             if not isinstance(parsed_arguments, dict):

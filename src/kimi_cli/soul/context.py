@@ -8,11 +8,13 @@ from typing import Any, cast
 
 import aiofiles
 import aiofiles.os
+import orjson
 from kosong.message import Message
 from pydantic import ValidationError
 
 from kimi_cli.soul.compaction import estimate_text_tokens
 from kimi_cli.soul.message import system
+from kimi_cli.utils.jsonx import loads_relaxed
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import next_available_rotation
 
@@ -255,8 +257,8 @@ class Context:
         line_no: int,
     ) -> dict[str, Any] | None:
         try:
-            line_json = json.loads(line, strict=False)
-        except json.JSONDecodeError as exc:
+            line_json = loads_relaxed(line)
+        except (orjson.JSONDecodeError, json.JSONDecodeError) as exc:
             logger.warning(
                 "Skipping malformed context line {line_no} in {file}: {error}",
                 line_no=line_no,

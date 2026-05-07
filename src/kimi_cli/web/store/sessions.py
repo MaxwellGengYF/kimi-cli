@@ -83,7 +83,7 @@ def _derive_title_from_wire(session_dir: Path) -> str:
         return "Untitled"
 
     try:
-        import json
+        import orjson
 
         from kosong.message import Message
 
@@ -95,7 +95,7 @@ def _derive_title_from_wire(session_dir: Path) -> str:
                 if not line:
                     continue
                 try:
-                    record = json.loads(line)
+                    record = orjson.loads(line)
                     message = record.get("message", {})
                     if message.get("type") == "TurnBegin":
                         user_input = message.get("payload", {}).get("user_input")
@@ -103,7 +103,7 @@ def _derive_title_from_wire(session_dir: Path) -> str:
                             msg = Message(role="user", content=user_input)
                             text = msg.extract_text(" ")
                             return shorten(text, width=300)
-                except json.JSONDecodeError:
+                except orjson.JSONDecodeError:
                     continue
     except Exception:
         pass

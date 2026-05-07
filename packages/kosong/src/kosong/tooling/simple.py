@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import json
+import orjson
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Self
 
@@ -118,8 +119,10 @@ class SimpleToolset:
 
         tool = self._tool_dict[tool_call.function.name]
 
+        from kosong.utils.jsonx import loads_relaxed
+
         try:
-            arguments: JsonType = json.loads(tool_call.function.arguments or "{}", strict=False)
+            arguments: JsonType = loads_relaxed(tool_call.function.arguments or "{}")
         except json.JSONDecodeError as e:
             return ToolResult(tool_call_id=tool_call.id, return_value=ToolParseError(str(e)))
 

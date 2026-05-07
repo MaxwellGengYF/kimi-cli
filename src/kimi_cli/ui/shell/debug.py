@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import orjson
 from typing import TYPE_CHECKING
 
 from kosong.message import Message
@@ -69,8 +70,10 @@ def _format_content_part(part: ContentPart) -> Text | Panel | Group:
 def _format_tool_call(tool_call: ToolCall) -> Panel:
     """Format a tool call."""
     args = tool_call.function.arguments or "{}"
+    from kimi_cli.utils.jsonx import loads_relaxed
+
     try:
-        args_formatted = json.dumps(json.loads(args, strict=False), indent=2)
+        args_formatted = orjson.dumps(loads_relaxed(args), option=orjson.OPT_INDENT_2).decode()
         args_syntax = Syntax(args_formatted, "json", theme="monokai", padding=(0, 1))
     except json.JSONDecodeError:
         args_syntax = Text(args, style="red")

@@ -10,16 +10,18 @@ from pathlib import Path
 from typing import Any
 
 import aiofiles
+import orjson
 from kaos.path import KaosPath
 from kosong.message import Message
 
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.session_state import SessionState, load_session_state, save_session_state
+from kimi_cli.soul.context_records import ExportedContext
+from kimi_cli.utils.jsonx import loads_relaxed
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.string import shorten
 from kimi_cli.wire.file import WireFile
 from kimi_cli.wire.types import TurnBegin
-from kimi_cli.soul.context_records import ExportedContext
 
 
 @dataclass(slots=True, kw_only=True)
@@ -79,7 +81,7 @@ class Session:
                     line = line.strip()
                     if not line:
                         continue
-                    role = json.loads(line, strict=False).get("role")
+                    role = loads_relaxed(line).get("role")
                     if isinstance(role, str) and not role.startswith("_"):
                         return False
         except FileNotFoundError:
@@ -140,13 +142,14 @@ class Session:
         Returns:
             ExportedContext: Structured representation of the context file.
         """
+        from pydantic import ValidationError
+
         from kimi_cli.soul.context_records import (
             CheckpointRecord,
             ExportedContext,
             SystemPromptRecord,
             UsageRecord,
         )
-        from pydantic import ValidationError
 
         result = ExportedContext()
 
@@ -158,8 +161,8 @@ class Session:
                 if not line.strip():
                     continue
                 try:
-                    line_json = json.loads(line, strict=False)
-                except json.JSONDecodeError:
+                    line_json = loads_relaxed(line)
+                except (orjson.JSONDecodeError, json.JSONDecodeError):
                     continue
                 if not isinstance(line_json, dict):
                     continue

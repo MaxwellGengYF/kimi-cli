@@ -1,6 +1,4 @@
 import asyncio
-import demjson3
-import json
 from collections.abc import Callable
 from pathlib import Path
 from stat import S_ISREG
@@ -38,10 +36,6 @@ class Params(BaseModel):
     )
     edit: Edit | list[Edit] = Field(
         description="One or more edits."
-    )
-    fix_foramt: bool = Field(
-        default=True,
-        description='Auto fix file format.'
     )
 
 
@@ -204,24 +198,8 @@ class StrReplaceFile(CallableTool2[Params]):
             elif suffix == ".xml":
                 fmt_error = check_xml_text(new_content)
 
-            fixed_content = new_content
-            if fmt_error and is_json and params.fix_foramt:
-                try:
-                    decoded = json.loads(new_content)
-                    fixed_content = json.dumps(decoded)
-                    fmt_error = None
-                except json.JSONDecodeError:
-                    try:
-                        decoded = demjson3.decode(new_content, encoding='utf-8', strict=False)
-                        fixed_content = json.dumps(decoded)
-                        fmt_error = None
-                    except demjson3.JSONDecodeError as e:
-                        fmt_error = f"JSON decode error: {str(e)}"
-                    except Exception as exc:
-                        fmt_error = f"failed to validate JSON file: {str(exc)}"
-
             # Write the modified content back to the file
-            await p.write_text(fixed_content, errors="replace")
+            await p.write_text(new_content, errors="replace")
 
             if fmt_error:
                 return ToolError(

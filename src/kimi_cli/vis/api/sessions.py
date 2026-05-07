@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import orjson
 import logging
 import re
 import shutil
@@ -299,8 +300,8 @@ async def get_context_messages(work_dir_hash: str, session_id: str) -> dict[str,
             if not line:
                 continue
             try:
-                msg = json.loads(line)
-            except json.JSONDecodeError:
+                msg = orjson.loads(line)
+            except orjson.JSONDecodeError:
                 logger.debug("Skipped malformed line in %s", context_path)
                 continue
             msg["index"] = index
@@ -324,8 +325,8 @@ async def get_session_state(work_dir_hash: str, session_id: str) -> dict[str, An
     async with aiofiles.open(state_path, encoding="utf-8") as f:
         content = await f.read()
     try:
-        return json.loads(content)
-    except json.JSONDecodeError as err:
+        return orjson.loads(content)
+    except orjson.JSONDecodeError as err:
         raise HTTPException(status_code=500, detail="Invalid state.json") from err
 
 
@@ -458,7 +459,7 @@ def list_subagents(work_dir_hash: str, session_id: str) -> list[dict[str, Any]]:
         meta: dict[str, Any] = {}
         if meta_path.exists():
             with contextlib.suppress(Exception):
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                meta = orjson.loads(meta_path.read_text(encoding="utf-8"))
 
         wire_path = entry / "wire.jsonl"
         context_path = entry / "context.jsonl"
@@ -548,8 +549,8 @@ async def get_subagent_context(
             if not line:
                 continue
             try:
-                msg = json.loads(line)
-            except json.JSONDecodeError:
+                msg = orjson.loads(line)
+            except orjson.JSONDecodeError:
                 logger.debug("Skipped malformed line in %s", context_path)
                 continue
             msg["index"] = index
@@ -576,8 +577,8 @@ async def get_subagent_meta(work_dir_hash: str, session_id: str, agent_id: str) 
     async with aiofiles.open(meta_path, encoding="utf-8") as f:
         content = await f.read()
     try:
-        return json.loads(content)
-    except json.JSONDecodeError as err:
+        return orjson.loads(content)
+    except orjson.JSONDecodeError as err:
         raise HTTPException(status_code=500, detail="Invalid meta.json") from err
 
 

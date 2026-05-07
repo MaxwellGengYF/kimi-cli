@@ -8,6 +8,7 @@ except ModuleNotFoundError as exc:
 
 import copy
 import json
+import orjson
 import re
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, Unpack, cast
@@ -486,8 +487,10 @@ class Anthropic:
                 continue
         for tool_call in message.tool_calls or []:
             if tool_call.function.arguments:
+                from kosong.utils.jsonx import loads_relaxed
+
                 try:
-                    parsed_arguments = json.loads(tool_call.function.arguments, strict=False)
+                    parsed_arguments = loads_relaxed(tool_call.function.arguments)
                 except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
                     raise ChatProviderError("Tool call arguments must be valid JSON.") from exc
                 if not isinstance(parsed_arguments, dict):
@@ -564,7 +567,7 @@ class AnthropicStreamedMessage:
                     yield ToolCall(
                         id=block.id,
                         function=ToolCall.FunctionBody(
-                            name=block.name, arguments=json.dumps(block.input)
+                            name=block.name, arguments=orjson.dumps(block.input).decode()
                         ),
                     )
                 case _:

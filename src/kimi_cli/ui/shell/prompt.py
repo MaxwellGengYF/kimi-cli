@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
+import orjson
 import os
 import random
 import re
@@ -812,8 +812,8 @@ def _load_history_entries(history_file: Path) -> list[_HistoryEntry]:
                 if not line:
                     continue
                 try:
-                    record = json.loads(line)
-                except json.JSONDecodeError:
+                    record = orjson.loads(line)
+                except orjson.JSONDecodeError:
                     logger.warning(
                         "Failed to parse user history line; skipping: {line}",
                         line=line,

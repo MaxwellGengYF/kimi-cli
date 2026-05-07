@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import orjson
 import mimetypes
 import os
 import shutil
@@ -199,7 +200,7 @@ def _read_wire_lines(wire_file: Path) -> list[str]:
             if not line:
                 continue
             try:
-                record = json.loads(line)
+                record = orjson.loads(line)
                 if not isinstance(record, dict):
                     continue
                 record = cast(dict[str, Any], record)
@@ -225,8 +226,8 @@ def _read_wire_lines(wire_file: Path) -> list[str]:
                     # as ``{"type": ..., "payload": {...}}`` so the id lives
                     # on the deserialized object, not at the raw dict top level.
                     event_msg["id"] = message.id
-                result.append(json.dumps(event_msg, ensure_ascii=False))
-            except (json.JSONDecodeError, KeyError, ValueError, TypeError):
+                result.append(orjson.dumps(event_msg).decode())
+            except (orjson.JSONDecodeError, KeyError, ValueError, TypeError):
                 continue
     return result
 
@@ -534,7 +535,7 @@ async def get_session_file(
                     size = 0
                 result.append({"name": subpath.name, "type": "file", "size": size})
         result.sort(key=lambda x: (cast(str, x["type"]), cast(str, x["name"])))
-        return Response(content=json.dumps(result), media_type="application/json")
+        return Response(content=orjson.dumps(result).decode(), media_type="application/json")
 
     content = file_path.read_bytes()
     media_type, _ = mimetypes.guess_type(file_path.name)
@@ -646,7 +647,7 @@ def extract_first_turn_from_wire(session_dir: Path) -> tuple[str, str] | None:
                 if not line:
                     continue
                 try:
-                    record = json.loads(line)
+                    record = orjson.loads(line)
                     message = record.get("message", {})
                     msg_type = message.get("type")
 
@@ -670,7 +671,7 @@ def extract_first_turn_from_wire(session_dir: Path) -> tuple[str, str] | None:
                     elif msg_type == "TurnEnd" and in_first_turn:
                         break
 
-                except json.JSONDecodeError:
+                except orjson.JSONDecodeError:
                     continue
     except OSError:
         return None

@@ -7,6 +7,7 @@ import base64
 import contextlib
 import io
 import json
+import orjson
 import mimetypes
 import sys
 import time
@@ -280,14 +281,13 @@ class SessionProcess:
         )
         event = SessionNoticeEvent(payload=payload)
         await self._broadcast(
-            json.dumps(
+            orjson.dumps(
                 {
                     "jsonrpc": "2.0",
                     "method": "event",
                     "params": event.model_dump(mode="json"),
                 },
-                ensure_ascii=False,
-            )
+            ).decode()
         )
 
     async def _read_loop(self) -> None:
@@ -336,7 +336,7 @@ class SessionProcess:
 
                 # Handle out message
                 try:
-                    msg = json.loads(line)
+                    msg = orjson.loads(line)
                     match msg.get("method"):
                         case "event":
                             msg["params"] = deserialize_wire_message(msg["params"])
@@ -355,7 +355,7 @@ class SessionProcess:
                                 await self._handle_out_message(
                                     JSONRPCSuccessResponse.model_validate(msg)
                                 )
-                except json.JSONDecodeError:
+                except orjson.JSONDecodeError:
                     logger.error(f"Invalid JSONRPC out message: {line}")
 
         except asyncio.CancelledError:
@@ -397,7 +397,7 @@ class SessionProcess:
         sent_marker = uploads_dir / ".sent"
         if sent_marker.exists():
             try:
-                already_sent = json.loads(sent_marker.read_text(encoding="utf-8"))
+                already_sent = orjson.loads(sent_marker.read_text(encoding="utf-8"))
                 self._sent_files.update(already_sent)
             except Exception:
                 pass
@@ -517,7 +517,7 @@ class SessionProcess:
                         user_input.append(TextPart(text=message.params.user_input))
                 else:
                     user_input += message.params.user_input
-                return json.dumps(
+                return orjson.dumps(
                     {
                         "jsonrpc": "2.0",
                         "method": "prompt",
@@ -526,8 +526,7 @@ class SessionProcess:
                             "user_input": [part.model_dump(mode="json") for part in user_input],
                         },
                     },
-                    ensure_ascii=False,
-                )
+                ).decode()
             case _:
                 return None
         return None

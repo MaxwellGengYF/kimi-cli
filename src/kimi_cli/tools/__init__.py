@@ -1,4 +1,5 @@
 import json
+import orjson
 from typing import cast
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]
@@ -19,8 +20,10 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
         json_str = json_content.complete_json()
     else:
         json_str = json_content
+    from kimi_cli.utils.jsonx import loads_relaxed
+
     try:
-        curr_args: JsonType = json.loads(json_str, strict=False)
+        curr_args: JsonType = loads_relaxed(json_str)
     except json.JSONDecodeError:
         return None
     if not curr_args:

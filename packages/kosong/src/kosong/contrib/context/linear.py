@@ -1,9 +1,9 @@
 import asyncio
-import json
 from pathlib import Path
 from typing import IO, Protocol, runtime_checkable
 
 from kosong.message import Message
+from kosong.utils.jsonx import loads_relaxed
 
 
 class LinearContext:
@@ -96,7 +96,7 @@ class JsonlLinearStorage(MemoryLinearStorage):
                 for line in f:
                     if not line.strip():
                         continue
-                    line_json = json.loads(line, strict=False)
+                    line_json = loads_relaxed(line)
                     if "token_count" in line_json:
                         self._token_count = line_json["token_count"]
                         continue

@@ -7,7 +7,7 @@ They have no knowledge of the event loop or prompt_toolkit.
 
 from __future__ import annotations
 
-import json
+import orjson
 import time
 from collections import deque
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
@@ -542,8 +542,10 @@ class _ToolCallBlock:
         """Extract the full URL from FetchURL tool arguments."""
         if tool_name != "FetchURL" or not arguments:
             return None
+        from kimi_cli.utils.jsonx import loads_relaxed
+
         try:
-            args = json.loads(arguments, strict=False)
+            args = loads_relaxed(arguments)
         except (json.JSONDecodeError, TypeError):
             return None
         if isinstance(args, dict):

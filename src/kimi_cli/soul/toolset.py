@@ -5,6 +5,7 @@ import contextlib
 import importlib
 import inspect
 import json
+import orjson
 import time
 import contextvars
 from contextvars import ContextVar
@@ -202,8 +203,10 @@ class KimiToolset:
 
             tool = self._tool_dict[tool_call.function.name]
 
+            from kimi_cli.utils.jsonx import loads_relaxed
+
             try:
-                arguments: JsonType = json.loads(tool_call.function.arguments or "{}")
+                arguments: JsonType = loads_relaxed(tool_call.function.arguments or "{}")
             except json.JSONDecodeError as e:
                 logger.warning(
                     "Tool call JSON parse error: {tool_name} (call_id={call_id}): {error}",

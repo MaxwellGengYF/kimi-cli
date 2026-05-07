@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import orjson
 from typing import Any, cast
 
 from kosong.chat_provider import (
@@ -157,15 +157,15 @@ def _parse_tool_call_part(payload: str) -> ToolCallPart:
     else:
         arguments_part = value
     if isinstance(arguments_part, (dict, list)):
-        arguments_part = json.dumps(arguments_part, separators=(",", ":"))
+        arguments_part = orjson.dumps(arguments_part).decode()
     return ToolCallPart(arguments_part=None if arguments_part in (None, "") else arguments_part)
 
 
 def _parse_mapping(raw: str, *, context: str) -> dict[str, Any]:
     raw = raw.strip()
     try:
-        loaded = json.loads(raw)
-    except json.JSONDecodeError:
+        loaded = orjson.loads(raw)
+    except orjson.JSONDecodeError:
         loaded = None
     if isinstance(loaded, dict):
         return cast(dict[str, Any], loaded)
@@ -194,8 +194,8 @@ def _parse_value(raw: str) -> Any:
     if lowered in {"null", "none"}:
         return None
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
+        return orjson.loads(raw)
+    except orjson.JSONDecodeError:
         return _strip_quotes(raw)
 
 

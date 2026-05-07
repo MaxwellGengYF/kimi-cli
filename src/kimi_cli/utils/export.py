@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import orjson
 from collections.abc import Sequence
+
+from kimi_cli.utils.jsonx import loads_relaxed
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -60,7 +63,7 @@ def _extract_tool_call_hint(args_json: str) -> str:
     short string value.  Returns ``""`` when nothing useful is found.
     """
     try:
-        parsed: object = json.loads(args_json, strict=False)
+        parsed: object = loads_relaxed(args_json)
     except (json.JSONDecodeError, TypeError):
         return ""
     if not isinstance(parsed, dict):
@@ -109,8 +112,8 @@ def _format_tool_call_md(tool_call: ToolCall) -> str:
         title += f" (`{hint}`)"
 
     try:
-        parsed = json.loads(args_raw, strict=False)
-        args_formatted = json.dumps(parsed, indent=2, ensure_ascii=False)
+        parsed = loads_relaxed(args_raw)
+        args_formatted = orjson.dumps(parsed, option=orjson.OPT_INDENT_2).decode()
     except json.JSONDecodeError:
         args_formatted = args_raw
 
@@ -410,8 +413,8 @@ def _stringify_tool_calls(tool_calls: Sequence[ToolCall]) -> str:
     for tc in tool_calls:
         args_raw = tc.function.arguments or "{}"
         try:
-            args = json.loads(args_raw, strict=False)
-            args_str = json.dumps(args, ensure_ascii=False)
+            args = loads_relaxed(args_raw)
+            args_str = orjson.dumps(args).decode()
         except (json.JSONDecodeError, TypeError):
             args_str = args_raw
         lines.append(f"Tool Call: {tc.function.name}({args_str})")
