@@ -517,6 +517,7 @@ class KimiToolset:
         try:
             module = importlib.import_module(module_name)
         except ImportError as e:
+            print(str(e))
             logger.warning(
                 "Tool module import failed: {module_name}: {error}",
                 module_name=module_name,
