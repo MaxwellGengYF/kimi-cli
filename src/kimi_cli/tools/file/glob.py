@@ -93,18 +93,20 @@ class Glob(CallableTool2[Params]):
                 return pattern_error
 
             if params.directory:
-                logical_dir = KaosPath(params.directory).expanduser().canonical()
-                if (
-                    not is_within_workspace(logical_dir, self._work_dir, self._additional_dirs)
-                    and not any(is_within_directory(logical_dir, d) for d in self._skills_dirs)
-                ):
-                    return ToolError(
-                        message=f"`{params.directory}` is outside the workspace.",
-                        brief="Directory outside workspace",
-                    )
+                # Allow this
+                # logical_dir = KaosPath(params.directory).expanduser().canonical()
+                # Allow glob out of 
+                # if (
+                #     not is_within_workspace(logical_dir, self._work_dir, self._additional_dirs)
+                #     and not any(is_within_directory(logical_dir, d) for d in self._skills_dirs)
+                # ):
+                #     return ToolError(
+                #         message=f"`{params.directory}` is outside the workspace.",
+                #         brief="Directory outside workspace",
+                #     )
                 dir_path = await resolve_vfs(params.directory, self._vfs, for_write=False)
             else:
-                logical_dir = self._work_dir
+                # logical_dir = self._work_dir
                 dir_path = await resolve_vfs(str(self._work_dir), self._vfs, for_write=False)
 
             if not await dir_path.exists():
