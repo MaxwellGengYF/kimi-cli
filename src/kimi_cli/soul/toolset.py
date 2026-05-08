@@ -70,6 +70,7 @@ current_tool_call = ContextVar[ToolCall | None]("current_tool_call", default=Non
 
 _current_session_id: ContextVar[str] = ContextVar("_current_session_id", default="")
 _temp_idx = 0
+print_tool_func = print
 
 _temp_folder: Path = Path.home() / '.kimi' / 'logs'
 
@@ -288,11 +289,11 @@ class KimiToolset:
                             lst.append(f'{k}: {value}')
                         lst.append(']')
                         text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
-                        print(text)
+                        print_tool_func(text)
                         ret = await tool.call(arguments)
                         display_text = _format_display_blocks(ret.display)
                         if display_text:
-                            print(display_text)
+                            print_tool_func(display_text)
                         if isinstance(ret.output, str):
                             ret.output = sanitize_for_tokenizer(ret.output)
                         elif isinstance(ret.output, list):
@@ -375,7 +376,7 @@ class KimiToolset:
                     if not err_msg:
                         err_msg = ret.message
                     text = f"\033[0;91m{tool_call.function.name} error: {err_msg} [spent {(tool_elapsed):.2f} seconds]\033[0m" # BRIGHT_MAGENTA
-                print(text)
+                print_tool_func(text)
                 logger.info(
                     "Tool {tool_name} completed in {elapsed:.1f}s (call_id={call_id})",
                     tool_name=tool_call.function.name,
@@ -520,7 +521,7 @@ class KimiToolset:
         try:
             module = importlib.import_module(module_name)
         except ImportError as e:
-            print(str(e))
+            print_tool_func(str(e))
             logger.warning(
                 "Tool module import failed: {module_name}: {error}",
                 module_name=module_name,
