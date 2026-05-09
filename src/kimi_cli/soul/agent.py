@@ -403,7 +403,6 @@ async def load_agent(
     """
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
-    tool_call_failed_list: list[tuple[str, str, str, str]]  | None = custom_arguments.get('tool_call_failed_list', None)
     custom_system_prompt : Callable[[BuiltinSystemPromptArgs], str] | None =  custom_arguments.get('custom_system_prompt', None)
     if custom_system_prompt is not None:
         system_prompt: str = custom_system_prompt(runtime.builtin_args)
@@ -437,7 +436,7 @@ async def load_agent(
             )
         )
 
-    toolset = KimiToolset(tool_call_failed_list) # Add by maxwell
+    toolset = KimiToolset() # Add by maxwell
     tool_deps = {
         KimiToolset: toolset,
         Runtime: runtime,

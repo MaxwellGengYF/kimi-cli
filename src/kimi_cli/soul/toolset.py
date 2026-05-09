@@ -147,7 +147,7 @@ if TYPE_CHECKING:
 
 
 class KimiToolset:
-    def __init__(self, tool_call_failed_list: list[tuple[str, str, str, str]] | None = None) -> None:
+    def __init__(self) -> None:
         self._tool_dict: dict[str, ToolType] = {}
         self._hidden_tools: set[str] = set()
         self._mcp_servers: dict[str, MCPServerInfo] = {}
@@ -155,7 +155,6 @@ class KimiToolset:
         self._deferred_mcp_load: tuple[list[MCPConfig], Runtime] | None = None
         self._hook_engine: HookEngine = HookEngine()
         self._recent_tool_calls: list[str] = []
-        self._tool_call_failed_list = tool_call_failed_list
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -370,8 +369,6 @@ class KimiToolset:
                     time_text = f'LOG: [{tool_call.function.name} spent {(tool_elapsed):.2f} seconds]'
                     text = f"\033[0;94m{time_text}\033[0m"
                 else:
-                    if self._tool_call_failed_list is not None:
-                        self._tool_call_failed_list.append((tool_call.function.name, arg_str, str(ret.output), ret.message))
                     err_msg = ret.brief
                     if not err_msg:
                         err_msg = ret.message
