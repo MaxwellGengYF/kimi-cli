@@ -14,7 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 import typing
 from typing import TYPE_CHECKING, Any, Literal, overload
-
+import hashlib
 from kosong.tooling import (
     CallableTool,
     CallableTool2,
@@ -154,8 +154,8 @@ class KimiToolset:
         self._mcp_loading_task: asyncio.Task[None] | None = None
         self._deferred_mcp_load: tuple[list[MCPConfig], Runtime] | None = None
         self._hook_engine: HookEngine = HookEngine()
-        self._recent_tool_call: list[str] = []
-        self._recent_command_calls: list[str] = []
+        self._recent_tool_call: list[tuple[str, int]] = []
+        self._recent_command_calls: list[tuple[str, int]] = []
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -251,36 +251,38 @@ class KimiToolset:
                     arg_str = str(arguments)
                     func_name = str(tool_call.function.name)
                     call_key_str = func_name + arg_str
-                    import hashlib
                     call_key_hash = hashlib.md5(call_key_str.encode()).hexdigest()
-                    self._recent_tool_call.append(func_name)
-                    self._recent_command_calls.append(call_key_hash)
-                    calls_len = len(self._recent_tool_call)
-                    cmds_len = len(self._recent_command_calls)
                     MAX_CALL_ALLOWED = 10
                     MAX_COMMAND_ALLOWED = 3
-                    if cmds_len > MAX_COMMAND_ALLOWED:
-                        self._recent_command_calls = self._recent_command_calls[cmds_len - MAX_COMMAND_ALLOWED:]
-                        cmds_len = MAX_COMMAND_ALLOWED
-                    
-                    calls_len = len(self._recent_tool_call)
-                    if calls_len > MAX_CALL_ALLOWED:
-                        self._recent_tool_call = self._recent_tool_call[calls_len - MAX_CALL_ALLOWED:]
-                        calls_len = MAX_CALL_ALLOWED
-                    
+                    LRU_SIZE = 3
+
+                    calls_len = 1
+                    for i, (name, count) in enumerate(self._recent_tool_call):
+                        if name == func_name:
+                            calls_len = count + 1
+                            del self._recent_tool_call[i]
+                            break
+                    else:
+                        if len(self._recent_tool_call) >= LRU_SIZE:
+                            self._recent_tool_call.pop(0)
+                    self._recent_tool_call.append((func_name, calls_len))
+
+                    cmds_len = 1
+                    for i, (key, count) in enumerate(self._recent_command_calls):
+                        if key == call_key_hash:
+                            cmds_len = count + 1
+                            del self._recent_command_calls[i]
+                            break
+                    else:
+                        if len(self._recent_command_calls) >= LRU_SIZE:
+                            self._recent_command_calls.pop(0)
+                    self._recent_command_calls.append((call_key_hash, cmds_len))
+
                     all_same = False
                     if cmds_len >= MAX_COMMAND_ALLOWED:
                         all_same = True
-                        for i in self._recent_command_calls[1:]:
-                            if self._recent_command_calls[0] != i:
-                                all_same = False
-                                break
                     if not all_same and calls_len >= MAX_CALL_ALLOWED:
                         all_same = True
-                        for i in self._recent_tool_call[1:]:
-                            if self._recent_tool_call[0] != i:
-                                all_same = False
-                                break
                     if all_same:
                         ret = ToolError(
                             output='',
@@ -388,8 +390,12 @@ class KimiToolset:
 
                 tool_elapsed = time.monotonic() - t0
                 if not ret.is_error:
-                    self._recent_command_calls.clear()
-                    self._recent_tool_call.clear()
+                    self._recent_tool_call = [
+                        (name, count) for name, count in self._recent_tool_call if name != func_name
+                    ]
+                    self._recent_command_calls = [
+                        (key, count) for key, count in self._recent_command_calls if key != call_key_hash
+                    ]
                     time_text = f'LOG: [{tool_call.function.name} spent {(tool_elapsed):.2f} seconds]'
                     text = f"\033[0;94m{time_text}\033[0m"
                 else:
