@@ -154,7 +154,8 @@ class KimiToolset:
         self._mcp_loading_task: asyncio.Task[None] | None = None
         self._deferred_mcp_load: tuple[list[MCPConfig], Runtime] | None = None
         self._hook_engine: HookEngine = HookEngine()
-        self._recent_tool_calls: list[str] = []
+        self._recent_tool_call: list[str] = []
+        self._recent_command_calls: list[str] = []
 
     def set_hook_engine(self, engine: HookEngine) -> None:
         self._hook_engine = engine
@@ -248,27 +249,42 @@ class KimiToolset:
                 try:
                     #### Check for repetitive tool calls, Add by maxwell
                     arg_str = str(arguments)
-                    call_key_str = str(tool_call.function.name) + arg_str
+                    func_name = str(tool_call.function.name)
+                    call_key_str = func_name + arg_str
                     import hashlib
                     call_key_hash = hashlib.md5(call_key_str.encode()).hexdigest()
-                    self._recent_tool_calls.append(call_key_hash)
-                    calls_len = len(self._recent_tool_calls)
-                    MAX_CALL_ALLOWED = 4
+                    self._recent_tool_call.append(func_name)
+                    self._recent_command_calls.append(call_key_hash)
+                    calls_len = len(self._recent_tool_call)
+                    cmds_len = len(self._recent_command_calls)
+                    MAX_CALL_ALLOWED = 10
+                    MAX_COMMAND_ALLOWED = 3
+                    if cmds_len > MAX_COMMAND_ALLOWED:
+                        self._recent_command_calls = self._recent_command_calls[cmds_len - MAX_COMMAND_ALLOWED:]
+                        cmds_len = MAX_COMMAND_ALLOWED
+                    
+                    calls_len = len(self._recent_tool_call)
                     if calls_len > MAX_CALL_ALLOWED:
-                        self._recent_tool_calls = self._recent_tool_calls[calls_len - MAX_CALL_ALLOWED:]
+                        self._recent_tool_call = self._recent_tool_call[calls_len - MAX_CALL_ALLOWED:]
                         calls_len = MAX_CALL_ALLOWED
-                    all_same = True
-                    if calls_len >= MAX_CALL_ALLOWED:
-                        for i in self._recent_tool_calls[1:]:
-                            if self._recent_tool_calls[0] != i:
+                    
+                    all_same = False
+                    if cmds_len >= MAX_COMMAND_ALLOWED:
+                        all_same = True
+                        for i in self._recent_command_calls[1:]:
+                            if self._recent_command_calls[0] != i:
                                 all_same = False
                                 break
-                    else:
-                        all_same = False
+                    if not all_same and calls_len >= MAX_CALL_ALLOWED:
+                        all_same = True
+                        for i in self._recent_tool_call[1:]:
+                            if self._recent_tool_call[0] != i:
+                                all_same = False
+                                break
                     if all_same:
                         ret = ToolError(
                             output='',
-                            message=f"Detected 3 consecutive identical tool calls: {tool_call.function.name}, Illegal.",
+                            message=f"Detected consecutive identical tool calls: {tool_call.function.name}, Illegal.",
                             brief='consecutive identical tool calls'
                         )
                     else:
@@ -317,6 +333,13 @@ class KimiToolset:
                             if len_bytes > MAX_BYTES:   # Add by Maxwell: process large size
                                 temp_file = _export_to_temp_file(ret.output)
                                 ret.output = f'Output too large ({len_bytes} bytes), exported to `{temp_file}`'
+                    # Surface repeat-failure count so the model knows it's looping.
+                    if ret.is_error and calls_len >= 2:
+                        repeat_msg = f"[repeated failure {calls_len}/{MAX_CALL_ALLOWED}]"
+                        if ret.message:
+                            ret.message = f"{ret.message} {repeat_msg}"
+                        else:
+                            ret.message = repeat_msg
                             
                 except Exception as e:
                     tool_elapsed = time.monotonic() - t0
@@ -365,7 +388,8 @@ class KimiToolset:
 
                 tool_elapsed = time.monotonic() - t0
                 if not ret.is_error:
-                    self._recent_tool_calls.clear()
+                    self._recent_command_calls.clear()
+                    self._recent_tool_call.clear()
                     time_text = f'LOG: [{tool_call.function.name} spent {(tool_elapsed):.2f} seconds]'
                     text = f"\033[0;94m{time_text}\033[0m"
                 else:
@@ -559,7 +583,6 @@ class KimiToolset:
                 args.append(dependencies[annotation])
         return tool_cls(*args)
 
-    # TODO(rc): remove `in_background` parameter and always load in background
     async def load_mcp_tools(
         self, mcp_configs: list[MCPConfig], runtime: Runtime, in_background: bool = True
     ) -> None:
