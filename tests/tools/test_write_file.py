@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, cast
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from kaos.path import KaosPath
 from pydantic import ValidationError
 
+from kimi_cli.soul.agent import Runtime
+from kimi_cli.soul.approval import Approval, ApprovalResult
 from kimi_cli.tools.file.write import Params, WriteFile
 from kimi_cli.wire.types import DiffDisplayBlock
+from tests.conftest import tool_call_context
 
 
 async def test_write_new_file(write_file_tool: WriteFile, temp_work_dir: KaosPath):
@@ -172,3 +177,118 @@ async def test_write_large_content(write_file_tool: WriteFile, temp_work_dir: Ka
     assert not result.is_error
     assert await file_path.exists()
     assert await file_path.read_text() == content
+
+
+# --- Comprehensive edge-case tests ---
+
+
+async def test_write_empty_path(write_file_tool: WriteFile):
+    """Test writing with an empty path."""
+    result = await write_file_tool(Params(path="", content="content"))
+    assert result.is_error
+    assert "File path cannot be empty" in result.message
+
+
+async def test_write_relative_path_outside_workspace(
+    write_file_tool: WriteFile, temp_work_dir: KaosPath
+):
+    """Test writing with a relative path that resolves outside the workspace."""
+    result = await write_file_tool(Params(path="../outside.txt", content="content"))
+    assert result.is_error
+    assert "absolute path" in result.message.lower()
+
+
+async def test_write_to_directory(write_file_tool: WriteFile, temp_work_dir: KaosPath):
+    """Test writing to an existing directory path."""
+    dir_path = temp_work_dir / "subdir"
+    await dir_path.mkdir()
+
+    result = await write_file_tool(Params(path=str(dir_path), content="content"))
+    assert result.is_error
+    assert "is a directory" in result.message
+
+
+async def test_write_valid_json(write_file_tool: WriteFile, temp_work_dir: KaosPath):
+    """Test writing valid JSON content succeeds."""
+    file_path = temp_work_dir / "test.json"
+    content = '{"key": "value", "num": 42}'
+
+    result = await write_file_tool(Params(path=str(file_path), content=content))
+    assert not result.is_error
+    assert await file_path.read_text() == content
+
+
+async def test_write_invalid_json(write_file_tool: WriteFile, temp_work_dir: KaosPath):
+    """Test writing invalid JSON content is rejected."""
+    file_path = temp_work_dir / "test.json"
+    content = '{"key": broken}'
+
+    result = await write_file_tool(Params(path=str(file_path), content=content))
+    assert result.is_error
+    assert "Format validation failed" in result.brief
+    assert "JSON decode error" in result.message
+    assert not await file_path.exists()
+
+
+async def test_write_valid_xml(write_file_tool: WriteFile, temp_work_dir: KaosPath):
+    """Test writing valid XML content succeeds."""
+    file_path = temp_work_dir / "test.xml"
+    content = "<root><item>value</item></root>"
+
+    result = await write_file_tool(Params(path=str(file_path), content=content))
+    assert not result.is_error
+    assert await file_path.read_text() == content
+
+
+async def test_write_invalid_xml(write_file_tool: WriteFile, temp_work_dir: KaosPath):
+    """Test writing invalid XML content is rejected."""
+    file_path = temp_work_dir / "test.xml"
+    content = "<root><unclosed></root>"
+
+    result = await write_file_tool(Params(path=str(file_path), content=content))
+    assert result.is_error
+    assert "Format validation failed" in result.brief
+    assert "XML parse error" in result.message
+    assert not await file_path.exists()
+
+
+async def test_write_approval_rejected(runtime: Runtime, temp_work_dir: KaosPath):
+    """Test that a rejected approval returns a ToolRejectedError."""
+    file_path = temp_work_dir / "test.txt"
+
+    approval = Approval(yolo=False)
+    request_mock = AsyncMock(return_value=ApprovalResult(approved=False))
+    approval.request = cast(Any, request_mock)
+
+    with tool_call_context("WriteFile"):
+        tool = WriteFile(runtime, approval)
+        result = await tool(Params(path=str(file_path), content="content"))
+
+    assert result.is_error
+    assert "rejected" in result.message.lower()
+    request_mock.assert_awaited_once()
+
+
+async def test_write_bind_plan_mode(runtime: Runtime, temp_work_dir: KaosPath):
+    """Test bind_plan_mode sets checker and getter correctly."""
+    with tool_call_context("WriteFile"):
+        tool = WriteFile(runtime, Approval(yolo=True))
+        checker = lambda: False
+        getter = lambda: None
+        tool.bind_plan_mode(checker, getter)
+        assert tool._plan_mode_checker is checker
+        assert tool._plan_file_path_getter is getter
+
+
+async def test_write_exception_during_write(runtime: Runtime, temp_work_dir: KaosPath):
+    """Test that an exception during write is handled gracefully."""
+    file_path = temp_work_dir / "test.txt"
+
+    with tool_call_context("WriteFile"):
+        tool = WriteFile(runtime, Approval(yolo=True))
+        with patch("kaos.path.KaosPath.write_text", side_effect=OSError("disk full")):
+            result = await tool(Params(path=str(file_path), content="content"))
+
+    assert result.is_error
+    assert "Failed to write" in result.message
+    assert "disk full" in result.message

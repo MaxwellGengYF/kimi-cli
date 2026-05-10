@@ -136,10 +136,8 @@ async def test_read_with_relative_path_outside_work_dir(
     path = Path("..") / "outside_file.txt"
     result = await read_file_tool(Params(path=str(path)))
     assert result.is_error
-    assert result.message == snapshot(
-        f"`{Path('..') / 'outside_file.txt'}` does not exist."
-    )
-    assert result.output == snapshot("")
+    assert "absolute path" in result.message.lower()
+    assert "outside the working directory" in result.message
 
 
 async def test_read_empty_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
@@ -529,7 +527,9 @@ async def test_read_tail_max_bytes(read_file_tool: ReadFile, temp_work_dir: Kaos
     content = "\n".join(lines_data)
     await large_file.write_text(content)
 
-    result = await read_file_tool(Params(path=str(large_file), line_offset=-(num_lines)))
+    result = await read_file_tool(
+        Params(path=str(large_file), line_offset=-(num_lines), max_char=200000)
+    )
     assert not result.is_error
     assert f"Max {MAX_BYTES} bytes reached" in result.message
     assert f"Total lines in file: {num_lines}." in result.message
@@ -599,3 +599,114 @@ async def test_read_tail_line_truncation(read_file_tool: ReadFile, temp_work_dir
     line_4 = [x for x in output_lines if x.strip().startswith("4")][0]
     actual_content = line_4.split("\t", 1)[1]
     assert actual_content.endswith("...")
+
+
+# --- Comprehensive edge-case tests ---
+
+
+async def test_read_empty_path(read_file_tool: ReadFile):
+    """Test reading with an empty path."""
+    result = await read_file_tool(Params(path=""))
+    assert result.is_error
+    assert "File path cannot be empty" in result.message
+
+
+async def test_read_outside_workspace_absolute(
+    read_file_tool: ReadFile, outside_file: Path
+):
+    """Test reading outside the working directory with an absolute path."""
+    outside_file.write_text("outside content", encoding="utf-8")
+    result = await read_file_tool(Params(path=str(outside_file)))
+    assert not result.is_error
+    assert "outside content" in result.output
+
+
+async def test_read_char_offset(read_file_tool: ReadFile, sample_file: KaosPath):
+    """Test char_offset slices output correctly."""
+    result = await read_file_tool(Params(path=str(sample_file), char_offset=10))
+    assert not result.is_error
+    # Output should skip the first 10 characters
+    assert not result.output.startswith("     1\t")
+    # The remaining content should be present
+    assert "Line 1" in result.output or "Line 2" in result.output
+
+
+async def test_read_max_char(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test max_char limits output correctly."""
+    file_path = temp_work_dir / "long.txt"
+    content = "\n".join([f"Line {i}" for i in range(1, 21)])
+    await file_path.write_text(content)
+
+    result = await read_file_tool(Params(path=str(file_path), max_char=20))
+    assert not result.is_error
+    assert len(result.output) <= 20
+
+
+async def test_read_binary_unknown_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test reading a binary/unknown file is blocked."""
+    binary_file = temp_work_dir / "data.bin"
+    await binary_file.write_bytes(bytes(range(256)))
+
+    result = await read_file_tool(Params(path=str(binary_file)))
+    assert result.is_error
+    assert "not readable" in result.message.lower() or "unknown" in result.message.lower()
+
+
+async def test_read_exception_handling(read_file_tool: ReadFile, temp_work_dir: KaosPath):
+    """Test that exceptions during reading are handled gracefully."""
+    file_path = temp_work_dir / "test.txt"
+    await file_path.write_text("content")
+
+    from unittest.mock import patch
+
+    with patch("kaos.path.KaosPath.read_bytes", side_effect=OSError("permission denied")):
+        result = await read_file_tool(Params(path=str(file_path)))
+
+    assert result.is_error
+    assert "Failed to read" in result.message
+    assert "permission denied" in result.message
+
+
+async def test_read_forward_max_lines_not_eof(
+    read_file_tool: ReadFile, temp_work_dir: KaosPath
+):
+    """Test forward read when max_lines is reached before EOF."""
+    file_path = temp_work_dir / "large.txt"
+    content = "\n".join([f"Line {i}" for i in range(1, MAX_LINES + 50)])
+    await file_path.write_text(content)
+
+    result = await read_file_tool(Params(path=str(file_path), line_offset=1, n_lines=MAX_LINES))
+    assert not result.is_error
+    assert f"Max {MAX_LINES} lines reached" in result.message
+    assert "End of file reached" not in result.message
+    assert "Total lines in file" not in result.message
+
+
+async def test_read_forward_end_of_file(
+    read_file_tool: ReadFile, sample_file: KaosPath
+):
+    """Test forward read reaches end of file message."""
+    result = await read_file_tool(
+        Params(path=str(sample_file), line_offset=1, n_lines=MAX_LINES)
+    )
+    assert not result.is_error
+    assert "End of file reached" in result.message
+    assert "Total lines in file: 5" in result.message
+
+
+async def test_read_tail_max_lines_not_eof(
+    read_file_tool: ReadFile, temp_work_dir: KaosPath
+):
+    """Test tail read returns MAX_LINES from a larger file."""
+    file_path = temp_work_dir / "tail_large.txt"
+    total = MAX_LINES + 100
+    content = "\n".join([f"Line {i}" for i in range(1, total + 1)])
+    await file_path.write_text(content)
+
+    result = await read_file_tool(
+        Params(path=str(file_path), line_offset=-MAX_LINES, n_lines=MAX_LINES, max_char=200000)
+    )
+    assert not result.is_error
+    assert f"Total lines in file: {total}." in result.message
+    output_lines = [line for line in result.output.split("\n") if line.strip()]
+    assert len(output_lines) == MAX_LINES

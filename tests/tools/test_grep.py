@@ -958,3 +958,468 @@ async def test_grep_allows_env_example(grep_tool: Grep):
         )
         assert not result.is_error
         assert ".env.example" in result.output
+
+
+# --- Comprehensive backup_grep and internal function tests ---
+
+
+async def test_backup_grep_empty_pattern(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep rejects empty patterns."""
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params(pattern="", path=str(temp_work_dir), output_mode="files_with_matches")
+    )
+    assert result.is_error
+    assert "Pattern cannot be empty" in result.message
+
+
+async def test_backup_grep_invalid_pattern(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep returns proper error for invalid regex."""
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params(pattern="[invalid", path=str(temp_work_dir), output_mode="files_with_matches")
+    )
+    assert result.is_error
+    assert "Invalid regex pattern" in result.message
+
+
+async def test_backup_grep_path_outside_workspace(grep_tool: Grep):
+    """backup_grep rejects paths outside the workspace."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as outside_dir:
+        grep_tool._rg_path = None
+        grep_tool._rg_path_task = None
+
+        result = await grep_tool(
+            Params(pattern="test", path=outside_dir, output_mode="files_with_matches")
+        )
+        assert result.is_error
+        assert "outside the workspace" in result.message.lower()
+
+
+async def test_backup_grep_path_not_found(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep returns error for nonexistent paths."""
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params(
+            pattern="test",
+            path=str(temp_work_dir / "nonexistent" / "xyz"),
+            output_mode="files_with_matches",
+        )
+    )
+    assert result.is_error
+    assert "does not exist" in result.message
+
+
+async def test_backup_grep_files_with_matches(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep finds files with matches."""
+    await (temp_work_dir / "a.py").write_text("hello world\n")
+    await (temp_work_dir / "b.js").write_text("hello there\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params.model_validate(
+            {
+                "pattern": "hello",
+                "path": str(temp_work_dir),
+                "output_mode": "files_with_matches",
+                "-i": True,
+            }
+        )
+    )
+    assert not result.is_error
+    assert "a.py" in result.output
+    assert "b.js" in result.output
+
+
+async def test_backup_grep_content_mode(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep content mode with line numbers."""
+    await (temp_work_dir / "a.py").write_text("hello world\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params.model_validate(
+            {
+                "pattern": "hello",
+                "path": str(temp_work_dir),
+                "output_mode": "content",
+                "-i": True,
+                "-n": True,
+            }
+        )
+    )
+    assert not result.is_error
+    assert "hello" in result.output.lower()
+    assert ":" in result.output
+
+
+async def test_backup_grep_content_no_line_numbers(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep content mode without line numbers."""
+    await (temp_work_dir / "a.py").write_text("hello world\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params.model_validate(
+            {
+                "pattern": "hello",
+                "path": str(temp_work_dir),
+                "output_mode": "content",
+                "-i": True,
+                "-n": False,
+            }
+        )
+    )
+    assert not result.is_error
+    for line in result.output.split("\n"):
+        if line.strip() and line != "--":
+            parts = line.split(":")
+            assert len(parts) == 2, f"Expected path:content, got: {line}"
+
+
+async def test_backup_grep_count_matches(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep count_matches mode."""
+    await (temp_work_dir / "a.py").write_text("hello\nhello\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params.model_validate(
+            {
+                "pattern": "hello",
+                "path": str(temp_work_dir),
+                "output_mode": "count_matches",
+                "-i": True,
+            }
+        )
+    )
+    assert not result.is_error
+    assert "a.py" in result.output
+    assert "Found" in result.message
+
+
+async def test_backup_grep_with_context(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep content mode with before/after context."""
+    # Add gap between matches so intervals don't merge
+    await (temp_work_dir / "a.py").write_text(
+        "line1\nTestClass\nline3\nline4\nline5\nTestClass2\nline7\n"
+    )
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params.model_validate(
+            {
+                "pattern": "TestClass",
+                "path": str(temp_work_dir),
+                "output_mode": "content",
+                "-C": 1,
+                "-n": True,
+            }
+        )
+    )
+    assert not result.is_error
+    assert "TestClass" in result.output
+    # Two match groups separated by gap should produce '--'
+    assert "--" in result.output
+
+
+async def test_backup_grep_multiline(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep multiline pattern matching."""
+    await (temp_work_dir / "multi.py").write_text("start\nmatch line\nend\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params(
+            pattern=r"start\nmatch",
+            path=str(temp_work_dir),
+            output_mode="content",
+            multiline=True,
+        )
+    )
+    assert not result.is_error
+    assert "start" in result.output
+
+
+async def test_backup_grep_no_matches(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep returns no matches message."""
+    await (temp_work_dir / "a.py").write_text("nothing here\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params(
+            pattern="nonexistent_xyz",
+            path=str(temp_work_dir),
+            output_mode="files_with_matches",
+        )
+    )
+    assert not result.is_error
+    assert "No matches found" in result.message
+
+
+async def test_backup_grep_glob_filter(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep respects glob filter."""
+    await (temp_work_dir / "a.py").write_text("hello\n")
+    await (temp_work_dir / "b.js").write_text("hello\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params.model_validate(
+            {
+                "pattern": "hello",
+                "path": str(temp_work_dir),
+                "output_mode": "files_with_matches",
+                "glob": "*.py",
+                "-i": True,
+            }
+        )
+    )
+    assert not result.is_error
+    assert "a.py" in result.output
+    assert "b.js" not in result.output
+
+
+async def test_backup_grep_type_filter(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep respects type filter."""
+    await (temp_work_dir / "a.py").write_text("hello\n")
+    await (temp_work_dir / "b.js").write_text("hello\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params.model_validate(
+            {
+                "pattern": "hello",
+                "path": str(temp_work_dir),
+                "output_mode": "files_with_matches",
+                "type": "py",
+                "-i": True,
+            }
+        )
+    )
+    assert not result.is_error
+    assert "a.py" in result.output
+    assert "b.js" not in result.output
+
+
+async def test_backup_grep_offset_pagination(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep offset + head_limit pagination."""
+    for i in range(10):
+        await (temp_work_dir / f"f{i}.txt").write_text(f"word{i}\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params(
+            pattern=r"word\d",
+            path=str(temp_work_dir),
+            output_mode="files_with_matches",
+            head_limit=3,
+            offset=2,
+        )
+    )
+    assert not result.is_error
+    lines = [x for x in result.output.split("\n") if x.strip()]
+    assert len(lines) == 3
+
+
+async def test_backup_grep_sensitive_file_filter(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep filters sensitive files."""
+    await (temp_work_dir / ".env").write_text("SECRET=x\n")
+    await (temp_work_dir / "ok.txt").write_text("SECRET=y\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params(pattern="SECRET", path=str(temp_work_dir), output_mode="files_with_matches")
+    )
+    assert not result.is_error
+    assert "ok.txt" in result.output
+    assert ".env" not in result.output
+    assert "sensitive" in result.message.lower()
+
+
+async def test_backup_grep_ignored_dirs(grep_tool: Grep, temp_work_dir: KaosPath):
+    """backup_grep skips ignored directories."""
+    node_modules = temp_work_dir / "node_modules"
+    await node_modules.mkdir(parents=True, exist_ok=True)
+    pkg = node_modules / "pkg"
+    await pkg.mkdir(parents=True, exist_ok=True)
+    await (pkg / "index.js").write_text("marker\n")
+    src = temp_work_dir / "src"
+    await src.mkdir(parents=True, exist_ok=True)
+    await (src / "main.js").write_text("marker\n")
+
+    grep_tool._rg_path = None
+    grep_tool._rg_path_task = None
+
+    result = await grep_tool(
+        Params(pattern="marker", path=str(temp_work_dir), output_mode="files_with_matches")
+    )
+    assert not result.is_error
+    assert "main.js" in result.output
+    assert "node_modules" not in result.output
+
+
+# --- Unit tests for internal helper functions ---
+
+
+def test_merge_intervals_basic():
+    """_merge_intervals merges overlapping and adjacent intervals."""
+    from kimi_cli.tools.file.grep_local import _merge_intervals
+
+    assert _merge_intervals([(1, 3), (2, 4)]) == [(1, 4)]
+    # Adjacent intervals (1,2) and (3,4) are also merged because 3 <= 2+1
+    assert _merge_intervals([(1, 2), (3, 4)]) == [(1, 4)]
+    assert _merge_intervals([(1, 5), (2, 3), (4, 6)]) == [(1, 6)]
+    assert _merge_intervals([]) == []
+
+
+def test_extract_path_content():
+    """_extract_path extracts path from content mode lines."""
+    from kimi_cli.tools.file.grep_local import Grep
+
+    tool = object.__new__(Grep)
+    tool._rg_path_task = None
+    assert tool._extract_path("file.py:10:match", "content") == "file.py"
+    assert tool._extract_path("file.py-10-context", "content") == "file.py"
+    assert tool._extract_path("--", "content") is None
+    assert tool._extract_path("plain", "content") == "plain"
+
+
+def test_extract_path_count():
+    """_extract_path extracts path from count_matches mode lines."""
+    from kimi_cli.tools.file.grep_local import Grep
+
+    tool = object.__new__(Grep)
+    tool._rg_path_task = None
+    assert tool._extract_path("file.py:42", "count_matches") == "file.py"
+
+
+def test_extract_path_files():
+    """_extract_path returns line as-is for files_with_matches mode."""
+    from kimi_cli.tools.file.grep_local import Grep
+
+    tool = object.__new__(Grep)
+    tool._rg_path_task = None
+    assert tool._extract_path("file.py", "files_with_matches") == "file.py"
+
+
+def test_is_valid_file_size_limit():
+    """_is_valid_file rejects files larger than 5MB."""
+    from kimi_cli.tools.file.grep_local import Grep
+
+    tool = object.__new__(Grep)
+    tool._rg_path_task = None
+    params = Params(pattern="test", path="/tmp")
+    assert tool._is_valid_file(Path("/nonexistent"), params) is False
+
+
+def test_should_skip_dir():
+    """_should_skip_dir correctly skips VCS and ignored directories."""
+    from kimi_cli.tools.file.grep_local import _should_skip_dir
+
+    assert _should_skip_dir(".git", False) is True
+    assert _should_skip_dir(".git", True) is True
+    assert _should_skip_dir("node_modules", False) is True
+    assert _should_skip_dir("node_modules", True) is False
+    assert _should_skip_dir("src", False) is False
+
+
+def test_matches_type_unknown():
+    """_matches_type returns False for unknown type names."""
+    from kimi_cli.tools.file.grep_local import _matches_type
+
+    assert _matches_type(Path("file.py"), "unknown_type") is False
+    assert _matches_type(Path("file.py"), None) is True
+    assert _matches_type(Path("file.py"), "py") is True
+    assert _matches_type(Path("file.rs"), "py") is False
+
+
+def test_matches_glob_edge_cases():
+    """_matches_glob handles None and various patterns."""
+    from kimi_cli.tools.file.grep_local import _matches_glob
+
+    assert _matches_glob(Path("file.py"), None) is True
+    assert _matches_glob(Path("file.py"), "*.py") is True
+    assert _matches_glob(Path("file.py"), "*.js") is False
+    assert _matches_glob(Path("test.py"), "test.*") is True
+
+
+def test_is_binary():
+    """_is_binary detects null bytes."""
+    from kimi_cli.tools.file.grep_local import _is_binary
+
+    assert _is_binary(b"hello\x00world") is True
+    assert _is_binary(b"hello world") is False
+    assert _is_binary(b"") is False
+
+
+def test_read_file_text_binary():
+    """_read_file_text returns None for binary files."""
+    import tempfile
+    from kimi_cli.tools.file.grep_local import _read_file_text
+
+    with tempfile.NamedTemporaryFile(delete=False) as f:
+        f.write(b"hello\x00world")
+        path = Path(f.name)
+
+    assert _read_file_text(path) is None
+    path.unlink()
+
+
+def test_read_file_text_utf8():
+    """_read_file_text returns content for text files."""
+    import tempfile
+    from kimi_cli.tools.file.grep_local import _read_file_text
+
+    with tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8") as f:
+        f.write("hello world")
+        path = Path(f.name)
+
+    assert _read_file_text(path) == "hello world"
+    path.unlink()
+
+
+def test_compile_regex_cached():
+    """_compile_regex_cached compiles and caches regex patterns."""
+    import re
+    from kimi_cli.tools.file.grep_local import _compile_regex_cached
+
+    p1 = _compile_regex_cached("test", 0)
+    p2 = _compile_regex_cached("test", 0)
+    assert p1 is p2  # Same cache entry
+    assert p1.pattern == "test"
+    assert _compile_regex_cached("test", re.IGNORECASE).flags & re.IGNORECASE
+
+
+def test_is_eagain():
+    """_is_eagain detects EAGAIN errors from stderr."""
+    from kimi_cli.tools.file.grep_local import _is_eagain
+
+    assert _is_eagain("os error 11") is True
+    assert _is_eagain("Resource temporarily unavailable") is True
+    assert _is_eagain("some other error") is False

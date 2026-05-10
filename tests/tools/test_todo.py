@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import pytest
 
+from pathlib import Path
+
+from kosong.tooling import ToolReturnValue
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.tools.todo import Params, SetTodoList, Todo
 
@@ -580,3 +583,228 @@ class TestSetTodoListSubagent:
         result = await tool(Params(todos=[Todo(title="New sub task", status="pending")]))
         assert result.is_error
         assert "Cannot replace with new todos" in result.output
+
+
+# --- Additional comprehensive tests ---
+
+
+class TestTodoModel:
+    """Test Todo model validation."""
+
+    def test_title_stripped(self):
+        """Title with leading/trailing whitespace should be stripped."""
+        todo = Todo(title="  hello  ", status="pending")
+        assert todo.title == "hello"
+
+    def test_title_internal_whitespace_preserved(self):
+        """Internal whitespace in title should be preserved."""
+        todo = Todo(title="hello world", status="pending")
+        assert todo.title == "hello world"
+
+    def test_title_min_length(self):
+        """Single non-whitespace character should be valid."""
+        todo = Todo(title="x", status="pending")
+        assert todo.title == "x"
+
+    def test_valid_statuses(self):
+        """All valid statuses should be accepted."""
+        for status in ("pending", "in_progress", "done"):
+            todo = Todo(title="Task", status=status)
+            assert todo.status == status
+
+
+class TestSetTodoListInternals:
+    """Test internal helper methods directly."""
+
+    def test_find_duplicate_titles(self):
+        """_find_duplicate_titles returns first duplicate or None."""
+        from kimi_cli.tools.todo import SetTodoList
+
+        assert SetTodoList._find_duplicate_titles([]) is None
+        assert SetTodoList._find_duplicate_titles([Todo(title="A", status="pending")]) is None
+        assert (
+            SetTodoList._find_duplicate_titles(
+                [Todo(title="A", status="pending"), Todo(title="B", status="done")]
+            )
+            is None
+        )
+        assert (
+            SetTodoList._find_duplicate_titles(
+                [
+                    Todo(title="A", status="pending"),
+                    Todo(title="B", status="done"),
+                    Todo(title="A", status="in_progress"),
+                ]
+            )
+            == "A"
+        )
+
+    def test_merge_todos_empty_old(self):
+        """_merge_todos with empty old returns new."""
+        from kimi_cli.tools.todo import SetTodoList
+
+        tool = object.__new__(SetTodoList)
+        result = tool._merge_todos([], [Todo(title="A", status="pending")])
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert result[0].title == "A"
+
+    def test_merge_todos_empty_new_when_all_done(self):
+        """_merge_todos with empty new and all old done returns empty."""
+        from kimi_cli.tools.todo import SetTodoList
+
+        tool = object.__new__(SetTodoList)
+        result = tool._merge_todos([Todo(title="A", status="done")], [])
+        assert isinstance(result, list)
+        assert len(result) == 0
+
+    def test_merge_todos_empty_new_when_not_done_errors(self):
+        """_merge_todos with empty new and incomplete old returns error."""
+        from kimi_cli.tools.todo import SetTodoList
+
+        tool = object.__new__(SetTodoList)
+        result = tool._merge_todos([Todo(title="A", status="pending")], [])
+        assert isinstance(result, ToolReturnValue)
+        assert result.is_error
+
+    def test_merge_todos_superset_when_all_done(self):
+        """_merge_todos with superset titles when all old done returns new."""
+        from kimi_cli.tools.todo import SetTodoList
+
+        tool = object.__new__(SetTodoList)
+        result = tool._merge_todos(
+            [Todo(title="A", status="done")],
+            [Todo(title="A", status="pending"), Todo(title="B", status="pending")],
+        )
+        assert isinstance(result, list)
+        assert len(result) == 2
+
+    def test_read_subagent_state_non_dict(self):
+        """_read_subagent_state handles non-JSON and non-dict data."""
+        from kimi_cli.tools.todo import SetTodoList
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as f:
+            f.write("[1, 2, 3]")  # valid JSON but not a dict
+            path = Path(f.name)
+
+        result = SetTodoList._read_subagent_state(path)
+        assert result == {}
+        path.unlink()
+
+    def test_read_subagent_state_nonexistent(self):
+        """_read_subagent_state returns empty dict for nonexistent file."""
+        from kimi_cli.tools.todo import SetTodoList
+
+        result = SetTodoList._read_subagent_state(Path("/nonexistent/state.json"))
+        assert result == {}
+
+
+class TestSetTodoListRegression:
+    """Test edge cases around status regression and force_replace."""
+
+    async def test_regression_allowed_with_force_replace(self, set_todo_list_tool: SetTodoList):
+        """force_replace=True allows regressing done todos."""
+        await set_todo_list_tool(
+            Params(todos=[Todo(title="A", status="pending"), Todo(title="B", status="done")])
+        )
+
+        result = await set_todo_list_tool(
+            Params(
+                todos=[Todo(title="A", status="done"), Todo(title="B", status="pending")],
+                force_replace=True,
+            )
+        )
+        assert not result.is_error
+        assert "force_replace" in result.output
+
+        read = await set_todo_list_tool(Params(todos=None))
+        assert "[pending] B" in read.output
+
+    async def test_multiple_duplicate_titles(self, set_todo_list_tool: SetTodoList):
+        """Multiple duplicate titles are still rejected."""
+        result = await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="A", status="pending"),
+                    Todo(title="B", status="pending"),
+                    Todo(title="C", status="pending"),
+                    Todo(title="B", status="done"),
+                    Todo(title="D", status="pending"),
+                ]
+            )
+        )
+        assert result.is_error
+        assert "Duplicate todo titles found" in result.output
+
+    async def test_all_done_replace_with_mixed_old_new(self, set_todo_list_tool: SetTodoList):
+        """When all old are done, new list with mix of old (still done) and new titles works."""
+        await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="Old A", status="done"),
+                    Todo(title="Old B", status="done"),
+                ]
+            )
+        )
+
+        # Old A stays done, New C is added — no regression
+        result = await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="Old A", status="done"),
+                    Todo(title="New C", status="in_progress"),
+                ]
+            )
+        )
+        assert not result.is_error
+
+        read = await set_todo_list_tool(Params(todos=None))
+        assert "Old A" in read.output
+        assert "Old B" not in read.output
+        assert "New C" in read.output
+
+    async def test_display_block_on_regression_error(self, set_todo_list_tool: SetTodoList):
+        """Regression error response includes TodoDisplayBlock."""
+        from kimi_cli.tools.display import TodoDisplayBlock
+
+        await set_todo_list_tool(
+            Params(todos=[Todo(title="A", status="pending"), Todo(title="B", status="done")])
+        )
+
+        result = await set_todo_list_tool(
+            Params(todos=[Todo(title="A", status="done"), Todo(title="B", status="pending")])
+        )
+        assert result.is_error
+        assert len(result.display) == 1
+        assert isinstance(result.display[0], TodoDisplayBlock)
+        items = result.display[0].items
+        assert any(i.title == "A" and i.status == "done" for i in items)
+        assert any(i.title == "B" and i.status == "done" for i in items)
+
+    async def test_update_all_to_done_then_replace(self, set_todo_list_tool: SetTodoList):
+        """Mark all as done, then replace with completely new list."""
+        await set_todo_list_tool(
+            Params(
+                todos=[
+                    Todo(title="A", status="pending"),
+                    Todo(title="B", status="in_progress"),
+                ]
+            )
+        )
+
+        # Mark all done
+        await set_todo_list_tool(
+            Params(todos=[Todo(title="A", status="done"), Todo(title="B", status="done")])
+        )
+
+        # Replace with new list
+        result = await set_todo_list_tool(
+            Params(todos=[Todo(title="C", status="pending")])
+        )
+        assert not result.is_error
+
+        read = await set_todo_list_tool(Params(todos=None))
+        assert "C" in read.output
+        assert "A" not in read.output
+        assert "B" not in read.output

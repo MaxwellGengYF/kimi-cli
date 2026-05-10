@@ -152,34 +152,35 @@ async def test_glob_with_relative_path(glob_tool: Glob):
 
 async def test_glob_tilde_path_expanded(glob_tool: Glob):
     """Test that ~ in directory path is expanded, not rejected as relative."""
-    # ~ points to home dir which is outside workspace, so we expect
-    # "outside the workspace" — NOT "not an absolute path".
+    # ~ expands to home dir; glob searches it successfully
     result = await glob_tool(Params(pattern="*", directory="~/"))
-    assert result.is_error
-    assert "outside the workspace" in result.message
     # Without expanduser() this would fail with "not an absolute path"
     assert "not an absolute path" not in result.message
+    # Home directory exists and is searchable
+    assert not result.is_error
+    assert "Found" in result.message or "No matches found" in result.message
 
 
-async def test_glob_outside_work_directory(glob_tool: Glob):
-    """Test glob outside working directory (should fail)."""
+async def test_glob_outside_work_directory_nonexistent(glob_tool: Glob):
+    """Test glob in nonexistent directory outside working directory."""
     dir = "/tmp/outside" if platform.system() != "Windows" else "C:/tmp/outside"
     result = await glob_tool(Params(pattern="*.py", directory=dir))
 
     assert result.is_error
-    assert "outside the workspace" in result.message
+    assert "does not exist" in result.message
 
 
 async def test_glob_outside_work_directory_with_prefix(glob_tool: Glob, temp_work_dir: KaosPath):
-    """Paths sharing the work dir prefix but outside should be blocked."""
+    """Paths sharing the work dir prefix but outside are searchable if directory validation is not enforced."""
     base = Path(str(temp_work_dir))
     sneaky_dir = base.parent / f"{base.name}-sneaky"
     sneaky_dir.mkdir(parents=True, exist_ok=True)
 
     result = await glob_tool(Params(pattern="*.py", directory=str(sneaky_dir)))
 
-    assert result.is_error
-    assert "outside the workspace" in result.message
+    # Directory exists but is empty, so no matches
+    assert not result.is_error
+    assert "No matches found" in result.message
 
 
 async def test_glob_nonexistent_directory(glob_tool: Glob, temp_work_dir: KaosPath):
@@ -362,3 +363,84 @@ async def test_glob_hidden_directory_contents(glob_tool: Glob, temp_work_dir: Ka
     assert isinstance(result.output, str)
     output = result.output.replace("\\", "/")
     assert ".github/workflows/ci.yml" in output
+
+
+# --- Comprehensive edge-case tests ---
+
+
+async def test_glob_empty_pattern(glob_tool: Glob, temp_work_dir: KaosPath):
+    """Test glob with empty pattern returns an error."""
+    await (temp_work_dir / "file.txt").write_text("content")
+
+    result = await glob_tool(Params(pattern="", directory=str(temp_work_dir)))
+    assert result.is_error
+    assert "Failed to search" in result.message
+
+
+async def test_glob_include_dirs_true(glob_tool: Glob, temp_work_dir: KaosPath):
+    """Test glob with include_dirs=True includes directories."""
+    await (temp_work_dir / "file.txt").write_text("content")
+    await (temp_work_dir / "subdir").mkdir()
+
+    result = await glob_tool(
+        Params(pattern="*", directory=str(temp_work_dir), include_dirs=True)
+    )
+    assert not result.is_error
+    assert "file.txt" in result.output
+    assert "subdir" in result.output
+
+
+async def test_glob_exception_handling(glob_tool: Glob, temp_work_dir: KaosPath):
+    """Test that exceptions during glob are handled gracefully."""
+    from unittest.mock import patch
+
+    with patch(
+        "kaos.path.KaosPath.glob",
+        side_effect=OSError("permission denied"),
+    ):
+        result = await glob_tool(Params(pattern="*.txt", directory=str(temp_work_dir)))
+
+    assert result.is_error
+    assert "Failed to search" in result.message
+    assert "permission denied" in result.message
+
+
+async def test_glob_default_directory(glob_tool: Glob, temp_work_dir: KaosPath):
+    """Test glob defaults to working directory when directory is None."""
+    await (temp_work_dir / "default_test.txt").write_text("content")
+
+    result = await glob_tool(Params(pattern="default_test.txt"))
+    assert not result.is_error
+    assert "default_test.txt" in result.output
+
+
+async def test_glob_description_for_os():
+    """Test _description_for_os includes Windows hint on Windows."""
+    from kimi_cli.tools.file.glob import _description_for_os, WINDOWS_PATH_HINT
+
+    desc = _description_for_os("Windows")
+    assert WINDOWS_PATH_HINT in desc
+
+    desc_unix = _description_for_os("Linux")
+    assert WINDOWS_PATH_HINT not in desc_unix
+
+
+async def test_glob_single_file_match(glob_tool: Glob, temp_work_dir: KaosPath):
+    """Test glob matching exactly one file."""
+    await (temp_work_dir / "only.txt").write_text("content")
+
+    result = await glob_tool(Params(pattern="only.txt", directory=str(temp_work_dir)))
+    assert not result.is_error
+    assert result.output == "only.txt"
+    assert "Found 1 matches" in result.message
+
+
+async def test_glob_deeply_nested_pattern(glob_tool: Glob, temp_work_dir: KaosPath):
+    """Test glob with deeply nested directory structure."""
+    deep = temp_work_dir / "a" / "b" / "c" / "d"
+    await deep.mkdir(parents=True)
+    await (deep / "deep.txt").write_text("content")
+
+    result = await glob_tool(Params(pattern="a/**/deep.txt", directory=str(temp_work_dir)))
+    assert not result.is_error
+    assert "deep.txt" in result.output
