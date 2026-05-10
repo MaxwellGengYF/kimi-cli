@@ -252,8 +252,8 @@ class KimiToolset:
                     func_name = str(tool_call.function.name)
                     call_key_str = func_name + arg_str
                     call_key_hash = hashlib.md5(call_key_str.encode()).hexdigest()
-                    MAX_CALL_ALLOWED = 10
-                    MAX_COMMAND_ALLOWED = 3
+                    MAX_CALL_ALLOWED = 15
+                    MAX_COMMAND_ALLOWED = 10
                     LRU_SIZE = 3
 
                     calls_len = 1
