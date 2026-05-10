@@ -111,7 +111,8 @@ class StrReplaceFile(CallableTool2[Params]):
         try:
             p = kaos_path_from_user_input(params.path)
             logical_path = p
-            if err := await self._validate_path(p):
+            err, _ = await self._validate_path(p)
+            if err:
                 return err
 
             p = await resolve_vfs(params.path, self._vfs, for_write=True)

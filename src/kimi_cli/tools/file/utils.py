@@ -271,7 +271,7 @@ async def resolve_vfs(path_str: str, vfs: VFS | None, *, for_write: bool = False
     Returns:
         KaosPath pointing to the physical location (virtual if dirty, else original)
     """
-    p = KaosPath(path_str).expanduser().canonical()
+    p = KaosPath(str(path_str)).expanduser().canonical()
     if vfs is None:
         return p
     if for_write:

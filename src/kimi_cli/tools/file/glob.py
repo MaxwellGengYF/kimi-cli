@@ -107,10 +107,8 @@ class Glob(CallableTool2[Params]):
             pattern_error = await self._validate_pattern(params.pattern)
             if pattern_error:
                 return pattern_error
-            dir_path = (
-                kaos_path_from_user_input(params.directory) if params.directory else self._work_dir
-            )
-            dir_path = await resolve_vfs(dir_path, self._vfs, for_write=False)
+            dir_path = KaosPath(str(kaos_path_from_user_input(params.directory)) if params.directory else str(self._work_dir))
+            dir_path = await resolve_vfs(str(dir_path), self._vfs, for_write=False)
             if not await dir_path.exists():
                 return ToolError(
                     message=f"`{params.directory}` does not exist.",
