@@ -79,6 +79,7 @@ from kimi_cli.wire.types import (
     SteerInput,
     StepBegin,
     StepInterrupted,
+    StepRetry,
     TextPart,
     ToolResult,
     TurnBegin,
@@ -998,11 +999,17 @@ class KimiSoul:
                 on_tool_result=wire_send,
             )
 
+        max_attempts = self._loop_control.max_retries_per_step
+
+        def _before_step_retry_sleep(retry_state: RetryCallState) -> None:
+            self._retry_log("step", retry_state)
+            self._emit_step_retry(retry_state, max_attempts=max_attempts)
+
         @tenacity.retry(
             retry=retry_if_exception(self._is_retryable_error),
-            before_sleep=partial(self._retry_log, "step"),
+            before_sleep=_before_step_retry_sleep,
             wait=wait_exponential_jitter(initial=0.3, max=5, jitter=0.5),
-            stop=stop_after_attempt(self._loop_control.max_retries_per_step),
+            stop=stop_after_attempt(max_attempts),
             reraise=True,
         )
         async def _kosong_step_with_retry() -> StepResult:
@@ -1116,9 +1123,20 @@ class KimiSoul:
         await self._context.append_message(tool_messages)
         # token count of tool results are not available yet
 
-    async def compact_context(self, custom_instruction: str = "") -> None:
+    async def compact_context(
+        self,
+        *,
+        manual: bool = False,
+        custom_instruction: str = "",
+    ) -> None:
         """
         Compact the context.
+
+        Args:
+            manual: Whether the compaction was explicitly requested by the user
+                (e.g. via the ``/compact`` slash command). When ``False``, the
+                compaction is treated as auto-triggered by the system.
+            custom_instruction: Optional user instruction to guide compaction focus.
 
         Raises:
             LLMNotSet: When the LLM is not set.
@@ -1148,7 +1166,12 @@ class KimiSoul:
                 chat_provider=chat_provider,
             )
 
-        trigger_reason = "manual" if custom_instruction else "auto"
+        if not manual:
+            trigger_reason = "auto"
+        elif custom_instruction:
+            trigger_reason = "manual-with-prompt"
+        else:
+            trigger_reason = "manual"
         before_tokens = self._context.token_count
         from kimi_cli.hooks import events
 
@@ -1345,6 +1368,21 @@ class KimiSoul:
             sleep=retry_state.next_action.sleep
             if retry_state.next_action is not None
             else "unknown",
+        )
+
+    def _emit_step_retry(self, retry_state: RetryCallState, *, max_attempts: int) -> None:
+        error = retry_state.outcome.exception() if retry_state.outcome else None
+        next_action = retry_state.next_action
+        wait_s = next_action.sleep if next_action is not None else 0.0
+        wire_send(
+            StepRetry(
+                n=self._current_step_no,
+                next_attempt=retry_state.attempt_number + 1,
+                max_attempts=max_attempts,
+                wait_s=wait_s,
+                error_type=type(error).__name__ if error else "unknown",
+                status_code=error.status_code if isinstance(error, APIStatusError) else None,
+            )
         )
 
 

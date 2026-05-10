@@ -14,7 +14,7 @@ from kimi_cli.tools.file.check_fmt import check_json_text, check_xml_text
 from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli import logger
-from kimi_cli.utils.path import is_within_workspace
+from kimi_cli.utils.path import is_within_workspace, kaos_path_from_user_input
 from kimi_cli.vfs import VFS
 from .utils import resolve_vfs
 
@@ -89,8 +89,8 @@ class WriteFile(CallableTool2[Params]):
             )
 
         try:
-            logical_path = KaosPath(params.path).expanduser().canonical()
-
+            p = kaos_path_from_user_input(params.path)
+            logical_path = p
             err, path_is_inside = await self._validate_path(logical_path)
             if err:
                 return err

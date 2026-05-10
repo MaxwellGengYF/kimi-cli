@@ -17,7 +17,7 @@ from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import is_within_workspace
+from kimi_cli.utils.path import is_within_workspace, kaos_path_from_user_input
 from kimi_cli.vfs import VFS
 from .utils import resolve_vfs
 
@@ -109,10 +109,9 @@ class StrReplaceFile(CallableTool2[Params]):
             )
 
         try:
-            logical_path = KaosPath(params.path).expanduser().canonical()
-
-            err, in_workspace = await self._validate_path(logical_path)
-            if err:
+            p = kaos_path_from_user_input(params.path)
+            logical_path = p
+            if err := await self._validate_path(p):
                 return err
 
             p = await resolve_vfs(params.path, self._vfs, for_write=True)

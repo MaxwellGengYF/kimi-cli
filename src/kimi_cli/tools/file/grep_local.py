@@ -33,7 +33,8 @@ import kimi_cli
 from kimi_cli.share import get_share_dir
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
-from kimi_cli import logger
+from kimi_cli.utils.logging import logger
+from kimi_cli.utils.path import normalize_user_path
 from kimi_cli.utils.sensitive import is_sensitive_file, sensitive_file_warning
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.vfs import VFS
@@ -309,7 +310,7 @@ def _build_rg_args(rg_path: str, params: Params, *, single_threaded: bool = Fals
     # Separate pattern from flags to avoid ambiguity (e.g. pattern starting with -)
     args.append("--")
     args.append(params.pattern)
-    args.append(os.path.expanduser(params.path))
+    args.append(os.path.expanduser(normalize_user_path(params.path)))
 
     return args
 
@@ -661,7 +662,7 @@ class Grep(CallableTool2[Params]):
                     lines = [p for _, p in sorted(zip(mtimes, lines), key=lambda x: x[0], reverse=True)]
 
             # Step 2: shorten paths to relative (prefix stripping)
-            search_base = os.path.abspath(os.path.expanduser(params.path))
+            search_base = os.path.abspath(os.path.expanduser(normalize_user_path(params.path)))
             if os.path.isfile(search_base):
                 search_base = os.path.dirname(search_base)
             lines = _strip_path_prefix(lines, search_base)

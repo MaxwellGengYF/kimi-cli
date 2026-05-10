@@ -12,7 +12,7 @@ from kimi_cli.vfs import VFS
 from .utils import resolve_vfs
 from kimi_cli.tools.utils import load_desc, truncate_line
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import is_within_workspace
+from kimi_cli.utils.path import is_within_workspace, kaos_path_from_user_input
 from kimi_cli.utils.sensitive import is_sensitive_file
 
 MAX_LINES = 1000
@@ -114,8 +114,9 @@ class ReadFile(CallableTool2[Params]):
             )
 
         try:
-            logical_path = KaosPath(params.path).expanduser().canonical()
-            if err := await self._validate_path(logical_path):
+            p = kaos_path_from_user_input(params.path)
+            logical_path = p
+            if err := await self._validate_path(p):
                 return err
 
             p = await resolve_vfs(params.path, self._vfs, for_write=False)
