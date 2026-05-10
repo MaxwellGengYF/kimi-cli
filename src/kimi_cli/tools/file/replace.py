@@ -174,7 +174,11 @@ class StrReplaceFile(CallableTool2[Params]):
                 str(logical_path), original_content, new_content
             )
 
-            action = FileActions.EDIT if in_workspace else FileActions.EDIT_OUTSIDE
+            action = (
+                FileActions.EDIT
+                if is_within_workspace(p, self._work_dir, self._additional_dirs)
+                else FileActions.EDIT_OUTSIDE
+            )
 
             # Plan file edits are auto-approved; all other edits need approval.
             if not is_plan_file_edit:

@@ -19,7 +19,6 @@ from kimi_cli.utils.path import (
     kaos_path_from_user_input,
     list_directory,
 )
-
 MAX_MATCHES = 1000
 GLOB_DESC_PATH = Path(__file__).parent / "glob.md"
 WINDOWS_PATH_HINT = (
@@ -57,7 +56,7 @@ class Glob(CallableTool2[Params]):
     name: str = "Glob"
     description: str = _description_for_os("")
     params: type[Params] = Params
-    def __init__(self, runtime: Runtime) -> None:
+    def __init__(self, runtime: Runtime, vfs: VFS | None = None) -> None:
         super().__init__(description=_description_for_os(runtime.environment.os_kind))
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
         self._additional_dirs = runtime.additional_dirs
