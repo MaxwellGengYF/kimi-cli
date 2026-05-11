@@ -155,12 +155,6 @@ class WriteFile(CallableTool2[Params]):
             elif file_path_str.lower().endswith(".xml"):
                 fmt_error = check_xml_text(new_text)
 
-            if fmt_error:
-                return ToolError(
-                    message=f"File content invalid: {fmt_error}",
-                    brief="Format validation failed",
-                )
-
             # Build diff blocks
             diff_blocks: list[DisplayBlock]
             if params.mode == "append" and file_existed:
@@ -215,6 +209,11 @@ class WriteFile(CallableTool2[Params]):
             file_size = len(new_text.encode("utf-8"))
             action_desc = "overwritten" if params.mode == "overwrite" else "appended to"
 
+            if fmt_error:
+                return ToolError(
+                    message=f"File successfully {action_desc}, but {fmt_error}",
+                    brief="Format validation failed",
+                )
             return ToolReturnValue(
                 is_error=False,
                 output="",
