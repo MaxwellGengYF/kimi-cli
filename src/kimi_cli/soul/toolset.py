@@ -252,8 +252,6 @@ class KimiToolset:
                     func_name = str(tool_call.function.name)
                     call_key_str = func_name + arg_str
                     call_key_hash = hashlib.md5(call_key_str.encode()).hexdigest()
-                    MAX_CALL_ALLOWED = 15
-                    MAX_COMMAND_ALLOWED = 10
                     LRU_SIZE = 3
 
                     calls_len = 1
@@ -278,66 +276,54 @@ class KimiToolset:
                             self._recent_command_calls.pop(0)
                     self._recent_command_calls.append((call_key_hash, cmds_len))
 
-                    all_same = False
-                    if cmds_len >= MAX_COMMAND_ALLOWED:
-                        all_same = True
-                    if not all_same and calls_len >= MAX_CALL_ALLOWED:
-                        all_same = True
-                    if all_same:
-                        ret = ToolError(
-                            output='',
-                            message=f"Detected consecutive identical tool calls: {tool_call.function.name}, Illegal.",
-                            brief='consecutive identical tool calls'
-                        )
-                    else:
-                        # Colorful print, Add by maxwell
-                        text = ''
-                        lst = [f'{tool_call.function.name}: [']
-                        is_first = True
-                        for k, v in tool_input_dict.items():
-                            if is_first:
-                                is_first = False
-                            else:
-                                lst.append(' | ')
-                            value = str(v)
-                            if len(value) > 32:
-                                value = f'{value[:32]}...'
-                            value = value.replace('\n', ' ')
-                            lst.append(f'{k}: {value}')
-                        lst.append(']')
-                        text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
-                        print_tool_func(text)
-                        ret = await tool.call(arguments)
-                        display_text = _format_display_blocks(ret.display)
-                        if display_text:
-                            print_tool_func(display_text)
-                        if isinstance(ret.output, str):
-                            ret.output = sanitize_for_tokenizer(ret.output)
-                        elif isinstance(ret.output, list):
-                            sanitized_parts: list[ContentPart] = []
-                            for part in ret.output:
-                                if isinstance(part, TextPart):
-                                    cleaned = sanitize_for_tokenizer(part.text)
-                                    if cleaned:
-                                        part.text = cleaned
-                                        sanitized_parts.append(part)
-                                elif isinstance(part, ThinkPart):
-                                    cleaned = sanitize_for_tokenizer(part.think)
-                                    if cleaned:
-                                        part.think = cleaned
-                                        sanitized_parts.append(part)
-                                else:
+                    # Colorful print, Add by maxwell
+                    text = ''
+                    lst = [f'{tool_call.function.name}: [']
+                    is_first = True
+                    for k, v in tool_input_dict.items():
+                        if is_first:
+                            is_first = False
+                        else:
+                            lst.append(' | ')
+                        value = str(v)
+                        if len(value) > 32:
+                            value = f'{value[:32]}...'
+                        value = value.replace('\n', ' ')
+                        lst.append(f'{k}: {value}')
+                    lst.append(']')
+                    text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
+                    print_tool_func(text)
+                    ret = await tool.call(arguments)
+                    display_text = _format_display_blocks(ret.display)
+                    if display_text:
+                        print_tool_func(display_text)
+                    if isinstance(ret.output, str):
+                        ret.output = sanitize_for_tokenizer(ret.output)
+                    elif isinstance(ret.output, list):
+                        sanitized_parts: list[ContentPart] = []
+                        for part in ret.output:
+                            if isinstance(part, TextPart):
+                                cleaned = sanitize_for_tokenizer(part.text)
+                                if cleaned:
+                                    part.text = cleaned
                                     sanitized_parts.append(part)
-                            ret.output = sanitized_parts
-                        MAX_BYTES = 128 << 10  # 128KB
-                        if type(ret.output) == str:
-                            len_bytes = len(ret.output.encode("utf-8"))
-                            if len_bytes > MAX_BYTES:   # Add by Maxwell: process large size
-                                temp_file = _export_to_temp_file(ret.output)
-                                ret.output = f'Output too large ({len_bytes} bytes), exported to `{temp_file}`'
+                            elif isinstance(part, ThinkPart):
+                                cleaned = sanitize_for_tokenizer(part.think)
+                                if cleaned:
+                                    part.think = cleaned
+                                    sanitized_parts.append(part)
+                            else:
+                                sanitized_parts.append(part)
+                        ret.output = sanitized_parts
+                    MAX_BYTES = 128 << 10  # 128KB
+                    if type(ret.output) == str:
+                        len_bytes = len(ret.output.encode("utf-8"))
+                        if len_bytes > MAX_BYTES:   # Add by Maxwell: process large size
+                            temp_file = _export_to_temp_file(ret.output)
+                            ret.output = f'Output too large ({len_bytes} bytes), exported to `{temp_file}`'
                     # Surface repeat-failure count so the model knows it's looping.
                     if ret.is_error and calls_len >= 2:
-                        repeat_msg = f"[repeated failure {calls_len}/{MAX_CALL_ALLOWED}]"
+                        repeat_msg = f"[repeated failure {calls_len}]"
                         if ret.message:
                             ret.message = f"{ret.message} {repeat_msg}"
                         else:
