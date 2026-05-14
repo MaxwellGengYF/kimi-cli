@@ -51,6 +51,8 @@ class Session:
     """The timestamp of the last update to the session."""
 
     custom_data: dict[str, Any]
+    
+    custom_config: dict[str, Any]
     @property
     def dir(self) -> Path:
         """The absolute path of the session directory."""
@@ -64,10 +66,6 @@ class Session:
         path = self.dir / "subagents"
         path.mkdir(parents=True, exist_ok=True)
         return path
-
-    def get_custom_data(self) -> dict[str, Any]:
-        """Return the custom data dictionary."""
-        return self.custom_data
 
     def is_empty(self) -> bool:
         """Whether the session has any context history or a custom title."""
@@ -248,6 +246,7 @@ class Session:
             title="",
             updated_at=0.0,
             custom_data={},
+            custom_config={},
         )
         await session.refresh()
         return session
@@ -292,6 +291,7 @@ class Session:
             title="",
             updated_at=0.0,
             custom_data={},
+            custom_config={},
         )
         await session.refresh()
         return session
@@ -337,6 +337,7 @@ class Session:
                 title="",
                 updated_at=0.0,
                 custom_data={},
+                custom_config={},
             )
             if session.is_empty():
                 logger.debug(
