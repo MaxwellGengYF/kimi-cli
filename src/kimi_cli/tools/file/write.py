@@ -10,7 +10,7 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import DiffDisplayBlock
 from kimi_cli.tools.file import FileActions
-from kimi_cli.tools.file.check_fmt import check_json_text, check_xml_text
+from kimi_cli.tools.file.check_fmt import check_json_text, check_toml_text, check_xml_text, check_yaml_text
 from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli import logger
@@ -152,6 +152,10 @@ class WriteFile(CallableTool2[Params]):
             is_json = file_path_str.lower().endswith(".json")
             if is_json:
                 fmt_error = check_json_text(new_text)
+            elif file_path_str.lower().endswith((".yaml", ".yml")):
+                fmt_error = check_yaml_text(new_text)
+            elif file_path_str.lower().endswith(".toml"):
+                fmt_error = check_toml_text(new_text)
             elif file_path_str.lower().endswith(".xml"):
                 fmt_error = check_xml_text(new_text)
 

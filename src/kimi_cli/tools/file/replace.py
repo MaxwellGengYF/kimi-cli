@@ -12,7 +12,7 @@ from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import DisplayBlock
 from kimi_cli.tools.file import FileActions
-from kimi_cli.tools.file.check_fmt import check_json_text, check_xml_text
+from kimi_cli.tools.file.check_fmt import check_json_text, check_toml_text, check_xml_text, check_yaml_text
 from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.diff import build_diff_blocks
@@ -199,6 +199,10 @@ class StrReplaceFile(CallableTool2[Params]):
             is_json = suffix == ".json"
             if is_json:
                 fmt_error = check_json_text(new_content)
+            elif suffix in (".yaml", ".yml"):
+                fmt_error = check_yaml_text(new_content)
+            elif suffix == ".toml":
+                fmt_error = check_toml_text(new_content)
             elif suffix == ".xml":
                 fmt_error = check_xml_text(new_content)
 
