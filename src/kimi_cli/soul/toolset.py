@@ -192,7 +192,7 @@ class KimiToolset:
         # Deduplication state
         self._previous_step_calls: list[tuple[str, str]] = []
         self._current_step_calls: list[tuple[str, str]] = []
-        self._current_step_tasks: dict[tuple[str, str], asyncio.Future[ToolResult]] = {}
+        self._current_step_tasks: dict[tuple[str, str], asyncio.Task[ToolResult]] = {}
         self._dedup_triggered: bool = False
         self._step_no: int = 0
         self._turn_id: str = ""
@@ -534,18 +534,20 @@ class KimiToolset:
                 _hook_task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
 
                 return ToolResult(tool_call_id=tool_call.id, return_value=ret)
-            def _run_call():
-                result = asyncio.run(_call())
-                if is_cross_step_dup:
-                    result = ToolResult(
-                        tool_call_id=result.tool_call_id,
-                        return_value=_append_reminder_to_return_value(result.return_value),
-                    )
-                return result
 
-            loop = asyncio.get_running_loop()
-            ctx = contextvars.copy_context()
-            task = loop.run_in_executor(None, ctx.run, _run_call)
+            task = asyncio.create_task(_call())
+            if is_cross_step_dup:
+
+                async def _wrap_with_reminder(
+                    inner_task: asyncio.Task[ToolResult],
+                ) -> ToolResult:
+                    tr = await inner_task
+                    return ToolResult(
+                        tool_call_id=tr.tool_call_id,
+                        return_value=_append_reminder_to_return_value(tr.return_value),
+                    )
+
+                task = asyncio.create_task(_wrap_with_reminder(task))
 
             self._current_step_tasks[call_key] = task
             self._current_step_calls.append(call_key)
