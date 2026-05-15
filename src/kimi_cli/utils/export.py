@@ -4,7 +4,7 @@ import json
 import orjson
 from collections.abc import Sequence
 
-from kimi_cli.utils.jsonx import loads_relaxed
+from kosong.utils.jsonx import loads_relaxed
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast

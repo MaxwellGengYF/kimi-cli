@@ -20,7 +20,7 @@ def extract_key_argument(json_content: str | streamingjson.Lexer, tool_name: str
         json_str = json_content.complete_json()
     else:
         json_str = json_content
-    from kimi_cli.utils.jsonx import loads_relaxed
+    from kosong.utils.jsonx import loads_relaxed
 
     try:
         curr_args: JsonType = loads_relaxed(json_str)

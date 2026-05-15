@@ -208,16 +208,11 @@ def mcp_remove(
     typer.echo(f"Removed MCP server '{name}' from {get_global_mcp_config_file()}.")
 
 
-def _has_oauth_tokens(server_url: str) -> bool:
+async def _has_oauth_tokens(server_url: str) -> bool:
     """Check if OAuth tokens exist for the server."""
-    import asyncio
-
     from kimi_cli.mcp_oauth import has_mcp_oauth_tokens
 
-    async def _check() -> bool:
-        return await has_mcp_oauth_tokens(server_url)
-
-    return asyncio.run(_check())
+    return await has_mcp_oauth_tokens(server_url)
 
 
 @cli.command("list")
@@ -232,21 +227,26 @@ def mcp_list():
         typer.echo("No MCP servers configured.")
         return
 
-    for name, server in servers.items():
-        if "command" in server:
-            cmd = server["command"]
-            cmd_args = " ".join(server.get("args", []))
-            line = f"{name} (stdio): {cmd} {cmd_args}".rstrip()
-        elif "url" in server:
-            transport = server.get("transport") or "http"
-            if transport == "streamable-http":
-                transport = "http"
-            line = f"{name} ({transport}): {server['url']}"
-            if server.get("auth") == "oauth" and not _has_oauth_tokens(server["url"]):
-                line += " [authorization required - run: kimi mcp auth " + name + "]"
-        else:
-            line = f"{name}: {server}"
-        typer.echo(f"  {line}")
+    async def _list() -> None:
+        for name, server in servers.items():
+            if "command" in server:
+                cmd = server["command"]
+                cmd_args = " ".join(server.get("args", []))
+                line = f"{name} (stdio): {cmd} {cmd_args}".rstrip()
+            elif "url" in server:
+                transport = server.get("transport") or "http"
+                if transport == "streamable-http":
+                    transport = "http"
+                line = f"{name} ({transport}): {server['url']}"
+                if server.get("auth") == "oauth" and not await _has_oauth_tokens(server["url"]):
+                    line += " [authorization required - run: kimi mcp auth " + name + "]"
+            else:
+                line = f"{name}: {server}"
+            typer.echo(f"  {line}")
+
+    import asyncio
+
+    asyncio.run(_list())
 
 
 @cli.command("auth")

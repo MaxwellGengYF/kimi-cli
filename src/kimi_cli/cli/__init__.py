@@ -366,6 +366,7 @@ def kimi(
     """Kimi, your next CLI agent."""
     import asyncio
     import contextlib
+    import inspect
     import json
 
     from kimi_cli.utils.proctitle import init_process_name
@@ -709,10 +710,37 @@ def kimi(
                 if not preserve_background_tasks:
                     await instance.shutdown_background_tasks()
                     await instance.await_bg_tasks_shutdown()
+                    await _close_llm_client(instance)
 
             return session, exit_code
         finally:
             startup_progress.stop()
+
+    async def _close_llm_client(instance: KimiCLI) -> None:
+        """Best-effort close of the LLM's underlying HTTP client."""
+        llm = getattr(instance._runtime, "llm", None)
+        if llm is None:
+            return
+        chat_provider = getattr(llm, "chat_provider", None)
+        if chat_provider is None:
+            return
+        for attr_name in ("client", "_client"):
+            client = getattr(chat_provider, attr_name, None)
+            if client is None:
+                continue
+            close = getattr(client, "close", None)
+            if not callable(close):
+                continue
+            try:
+                result = close()
+            except Exception:
+                return
+            if inspect.isawaitable(result):
+                try:
+                    await asyncio.wait_for(result, timeout=5.0)
+                except Exception:
+                    pass
+            return
 
     async def _delete_empty_session(session: Session) -> None:
         """Delete an empty session directory and clear last_session_id if it pointed to it."""
@@ -808,6 +836,12 @@ def kimi(
                         await _delete_empty_session(_latest_created_session)
             raise
 
+    async def _main() -> tuple[str | None, int]:
+        nonlocal session_id
+        if _picker_mode:
+            session_id = await _pick_session()
+        return await _reload_loop(session_id)
+
     if _picker_mode:
         from prompt_toolkit.shortcuts.choice_input import ChoiceInput
         from rich.console import Console
@@ -843,10 +877,8 @@ def kimi(
 
             return selection
 
-        session_id = asyncio.run(_pick_session())
-
     try:
-        switch_target, exit_code = asyncio.run(_reload_loop(session_id))
+        switch_target, exit_code = asyncio.run(_main())
     except (typer.BadParameter, typer.Exit):
         # Let Typer/Click format these errors (rich panel + correct exit code).
         raise

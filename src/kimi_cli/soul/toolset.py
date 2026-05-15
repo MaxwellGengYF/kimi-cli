@@ -309,7 +309,7 @@ class KimiToolset:
 
             tool = self._tool_dict[tool_call.function.name]
 
-            from kimi_cli.utils.jsonx import loads_relaxed
+            from kosong.utils.jsonx import loads_relaxed
 
             try:
                 arguments: JsonType = loads_relaxed(tool_call.function.arguments or "{}")

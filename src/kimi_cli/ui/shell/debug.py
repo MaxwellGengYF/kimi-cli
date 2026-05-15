@@ -70,7 +70,7 @@ def _format_content_part(part: ContentPart) -> Text | Panel | Group:
 def _format_tool_call(tool_call: ToolCall) -> Panel:
     """Format a tool call."""
     args = tool_call.function.arguments or "{}"
-    from kimi_cli.utils.jsonx import loads_relaxed
+    from kosong.utils.jsonx import loads_relaxed
 
     try:
         args_formatted = orjson.dumps(loads_relaxed(args), option=orjson.OPT_INDENT_2).decode()

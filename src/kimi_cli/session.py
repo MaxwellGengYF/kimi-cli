@@ -17,7 +17,7 @@ from kosong.message import Message
 from kimi_cli.metadata import WorkDirMeta, load_metadata, save_metadata
 from kimi_cli.session_state import SessionState, load_session_state, save_session_state
 from kimi_cli.soul.context_records import ExportedContext
-from kimi_cli.utils.jsonx import loads_relaxed
+from kosong.utils.jsonx import loads_relaxed
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.string import shorten
 from kimi_cli.wire.file import WireFile

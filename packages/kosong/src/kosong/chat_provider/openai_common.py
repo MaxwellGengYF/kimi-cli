@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import inspect
 import re
 import ssl
@@ -35,6 +36,17 @@ def create_openai_client(
     return AsyncOpenAI(api_key=api_key, base_url=base_url, **kwargs)
 
 
+_CLIENT_CLOSE_TASKS: set[asyncio.Task[None]] = set()
+
+
+def _on_close_task_done(task: asyncio.Task[None]) -> None:
+    _CLIENT_CLOSE_TASKS.discard(task)
+    if task.cancelled():
+        return
+    with contextlib.suppress(Exception):
+        task.exception()
+
+
 async def _drain_awaitable(awaitable: Awaitable[object]) -> None:
     try:
         await awaitable
@@ -55,10 +67,18 @@ def close_openai_client(client: AsyncOpenAI) -> None:
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        if hasattr(result, "close"):
-            result.close()  # type: ignore[attr-defined]
+        # No event loop running — close synchronously so the client
+        # doesn't outlive its creation loop.
+        try:
+            asyncio.run(_drain_awaitable(cast(Awaitable[object], result)))
+        except Exception:
+            pass
         return
-    loop.create_task(_drain_awaitable(cast(Awaitable[object], result)))
+    # Loop is running but we're in a sync context (e.g. on_retryable_error).
+    # Create a task and keep a strong reference so it can run to completion.
+    task = loop.create_task(_drain_awaitable(cast(Awaitable[object], result)))
+    _CLIENT_CLOSE_TASKS.add(task)
+    task.add_done_callback(_on_close_task_done)
 
 
 def close_replaced_openai_client(client: AsyncOpenAI, *, client_kwargs: Mapping[str, Any]) -> None:

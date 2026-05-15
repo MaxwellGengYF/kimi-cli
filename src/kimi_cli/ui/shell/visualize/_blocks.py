@@ -553,7 +553,7 @@ class _ToolCallBlock:
         """Extract the full URL from FetchURL tool arguments."""
         if tool_name != "FetchURL" or not arguments:
             return None
-        from kimi_cli.utils.jsonx import loads_relaxed
+        from kosong.utils.jsonx import loads_relaxed
 
         try:
             args = loads_relaxed(arguments)

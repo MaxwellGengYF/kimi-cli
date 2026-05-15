@@ -21,4 +21,9 @@ def loads_relaxed(data: str | bytes | bytearray) -> Any:
         pass
     if isinstance(data, (bytes, bytearray)):
         data = data.decode("utf-8", errors="ignore")
-    return dirtyjson.loads(data)
+    try:
+        return dirtyjson.loads(data)
+    except dirtyjson.Error as exc:
+        raise json.JSONDecodeError(exc.msg, exc.doc, exc.pos) from exc
+    except Exception as exc:
+        raise json.JSONDecodeError(str(exc), data, 0) from exc

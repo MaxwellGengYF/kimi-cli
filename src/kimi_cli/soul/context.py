@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from kimi_cli.soul.compaction import estimate_text_tokens
 from kimi_cli.soul.message import system
-from kimi_cli.utils.jsonx import loads_relaxed
+from kosong.utils.jsonx import loads_relaxed
 from kimi_cli.utils.logging import logger
 from kimi_cli.utils.path import next_available_rotation
 

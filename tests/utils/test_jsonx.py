@@ -130,9 +130,9 @@ class TestLoadsRelaxed:
         assert result == {"emoji": "🚀", "cjk": "你好世界"}
 
     def test_invalid_json_raises(self):
-        """Truly invalid input should raise an exception from dirtyjson."""
+        """Truly invalid input should raise json.JSONDecodeError."""
         data = '{this is not json at all'
-        with pytest.raises(dirtyjson.error.Error):
+        with pytest.raises(json.JSONDecodeError):
             loads_relaxed(data)
 
     def test_orjson_rejection_json_accepts(self):

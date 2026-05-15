@@ -50,10 +50,10 @@ def _resolve_work_dir(ctx: typer.Context) -> KaosPath:
     return KaosPath.unsafe_from_local_path(local_work_dir)
 
 
-def _find_session_by_id(session_id: str, *, work_dir: KaosPath | None = None) -> Path | None:
+async def _find_session_by_id(session_id: str, *, work_dir: KaosPath | None = None) -> Path | None:
     """Find a session directory by ID, preferring the current work directory."""
     if work_dir is not None:
-        session = asyncio.run(_find_session_in_work_dir(work_dir, session_id))
+        session = await _find_session_in_work_dir(work_dir, session_id)
         if session is not None:
             return session.dir
 
@@ -265,21 +265,24 @@ def export(
     """Export a session as a ZIP archive."""
     work_dir = _resolve_work_dir(ctx)
 
-    if session_id is None:
-        session = asyncio.run(_load_previous_session(work_dir))
-        if session is None:
-            typer.echo("Error: no previous session found for the working directory.", err=True)
-            raise typer.Exit(code=1)
-        if not yes and not _confirm_previous_session(session):
-            typer.echo("Export cancelled.")
-            return
-        session_id = session.id
-        session_dir = session.dir
-    else:
-        session_dir = _find_session_by_id(session_id, work_dir=work_dir)
-        if session_dir is None:
-            typer.echo(f"Error: session '{session_id}' not found.", err=True)
-            raise typer.Exit(code=1)
+    async def _resolve_export() -> tuple[str, Path]:
+        if session_id is None:
+            session = await _load_previous_session(work_dir)
+            if session is None:
+                typer.echo("Error: no previous session found for the working directory.", err=True)
+                raise typer.Exit(code=1)
+            if not yes and not _confirm_previous_session(session):
+                typer.echo("Export cancelled.")
+                raise typer.Exit(0)
+            return session.id, session.dir
+        else:
+            session_dir = await _find_session_by_id(session_id, work_dir=work_dir)
+            if session_dir is None:
+                typer.echo(f"Error: session '{session_id}' not found.", err=True)
+                raise typer.Exit(code=1)
+            return session_id, session_dir
+
+    session_id, session_dir = asyncio.run(_resolve_export())
 
     # Collect all files in the session directory (including subagents/ and tasks/)
     files = sorted(f for f in session_dir.rglob("*") if f.is_file())
