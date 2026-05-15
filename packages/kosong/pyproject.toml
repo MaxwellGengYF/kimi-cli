@@ -16,6 +16,7 @@ dependencies = [
     "typing-extensions>=4.15.0",
     "mcp>=1,<2",
     "orjson>=3.0.0",
+    "dirtyjson>=1.0.0",
 ]
 
 [project.optional-dependencies]
