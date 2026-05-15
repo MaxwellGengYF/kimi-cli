@@ -19,10 +19,11 @@ if TYPE_CHECKING:
 @cache
 def get_version() -> str:
     from importlib import metadata
-    try:
-        return metadata.version("kimi-cli")
-    except metadata.PackageNotFoundError:
-        return 'kimi-cli-unknown'
+    return 'kimix'
+    # try:
+    #     return metadata.version("kimi-cli")
+    # except metadata.PackageNotFoundError:
+    #     return 'kimi-cli-unknown'
 
 
 @cache
