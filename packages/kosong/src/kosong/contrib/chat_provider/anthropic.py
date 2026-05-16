@@ -458,7 +458,16 @@ class Anthropic:
             )
         elif role == "tool":
             if message.tool_call_id is None:
-                raise ChatProviderError("Tool message missing `tool_call_id`.")
+                # Return the error to the LLM instead of crashing.
+                return MessageParam(
+                    role="user",
+                    content=[
+                        TextBlockParam(
+                            type="text",
+                            text=f"Error: Tool message is missing `tool_call_id`. Content: {message.extract_text(sep='\n')}",
+                        )
+                    ],
+                )
             if self._tool_message_conversion == "extract_text":
                 content = message.extract_text(sep="\n")
             else:
@@ -492,9 +501,22 @@ class Anthropic:
                 try:
                     parsed_arguments = loads_relaxed(tool_call.function.arguments)
                 except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
-                    raise ChatProviderError("Tool call arguments must be valid JSON.") from exc
+                    # Return the parse error to the LLM instead of crashing.
+                    blocks.append(
+                        TextBlockParam(
+                            type="text",
+                            text=f"Error: Tool call '{tool_call.function.name}' has invalid JSON arguments: {exc}",
+                        )
+                    )
+                    parsed_arguments = {}
                 if not isinstance(parsed_arguments, dict):
-                    raise ChatProviderError("Tool call arguments must be a JSON object.")
+                    blocks.append(
+                        TextBlockParam(
+                            type="text",
+                            text=f"Error: Tool call '{tool_call.function.name}' arguments must be a JSON object, got {type(parsed_arguments).__name__}.",
+                        )
+                    )
+                    parsed_arguments = {}
                 tool_input = cast(dict[str, object], parsed_arguments)
             else:
                 tool_input = {}
@@ -665,8 +687,11 @@ def _tool_result_message_to_block(
             else:
                 # https://docs.claude.com/en/docs/build-with-claude/files#file-types-and-content-blocks
                 # Anthropic API supports very limited file types
-                raise ChatProviderError(
-                    f"Anthropic API does not support {type(part)} in tool result"
+                blocks.append(
+                    TextBlockParam(
+                        type="text",
+                        text=f"Error: Anthropic API does not support {type(part)} in tool result.",
+                    )
                 )
         block_content = blocks
 
@@ -677,17 +702,21 @@ def _tool_result_message_to_block(
     )
 
 
-def _image_url_part_to_anthropic(part: ImageURLPart) -> ImageBlockParam:
+def _image_url_part_to_anthropic(part: ImageURLPart) -> ToolResultContent:
     url = part.image_url.url
     # data:[<media-type>][;base64],<data>
     if url.startswith("data:"):
         res = url[5:].split(";base64,", 1)
         if len(res) != 2:
-            raise ChatProviderError(f"Invalid data URL for image: {url}")
+            return TextBlockParam(
+                type="text",
+                text=f"Error: Invalid data URL for image: {url}",
+            )
         media_type, data = res
         if media_type not in ("image/png", "image/jpeg", "image/gif", "image/webp"):
-            raise ChatProviderError(
-                f"Unsupported media type for base64 image: {media_type}, url: {url}"
+            return TextBlockParam(
+                type="text",
+                text=f"Error: Unsupported media type for base64 image: {media_type}, url: {url}",
             )
         return ImageBlockParam(
             type="image",

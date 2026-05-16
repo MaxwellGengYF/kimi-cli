@@ -384,12 +384,14 @@ def _image_url_part_to_google_genai(part: ImageURLPart) -> Part:
         # data:[<media-type>][;base64],<data>
         res = url[5:].split(";base64,", 1)
         if len(res) != 2:
-            raise ChatProviderError(f"Invalid data URL for image: {url}")
+            return Part.from_text(
+                text=f"Error: Invalid data URL for image: {url}",
+            )
 
         media_type, data_b64 = res
         if media_type not in ("image/png", "image/jpeg", "image/gif", "image/webp"):
-            raise ChatProviderError(
-                f"Unsupported media type for base64 image: {media_type}, url: {url}"
+            return Part.from_text(
+                text=f"Error: Unsupported media type for base64 image: {media_type}, url: {url}",
             )
 
         # Decode base64 string to bytes
@@ -415,7 +417,9 @@ def _audio_url_part_to_google_genai(part: AudioURLPart) -> Part:
         # data:[<media-type>][;base64],<data>
         res = url[5:].split(";base64,", 1)
         if len(res) != 2:
-            raise ChatProviderError(f"Invalid data URL for audio: {url}")
+            return Part.from_text(
+                text=f"Error: Invalid data URL for audio: {url}",
+            )
 
         media_type, data_b64 = res
         # Supported audio formats for GoogleGenAI
@@ -428,11 +432,12 @@ def _audio_url_part_to_google_genai(part: AudioURLPart) -> Part:
             "audio/flac",
         )
         if media_type not in supported_audio_types:
-            error_msg = (
-                f"Unsupported media type for base64 audio: {media_type}, url: {url}. "
-                f"Supported types: {supported_audio_types}"
+            return Part.from_text(
+                text=(
+                    f"Error: Unsupported media type for base64 audio: {media_type}, url: {url}. "
+                    f"Supported types: {supported_audio_types}"
+                ),
             )
-            raise ChatProviderError(error_msg)
 
         # Decode base64 string to bytes
         data_bytes = base64.b64decode(data_b64)
@@ -484,9 +489,15 @@ def _tool_message_to_function_response_part(
     tool_name_by_id: dict[str, str],
 ) -> Part:
     if message.role != "tool":  # pragma: no cover - defensive guard
-        raise ChatProviderError("Expected a tool message.")
+        # Return the error to the LLM instead of crashing.
+        return Part.from_text(
+            text=f"Error: Expected a tool message, got {message.role}. Content: {message.extract_text(sep='\n')}",
+        )
     if message.tool_call_id is None:
-        raise ChatProviderError("Tool response is missing `tool_call_id`.")
+        # Return the error to the LLM instead of crashing.
+        return Part.from_text(
+            text=f"Error: Tool response is missing `tool_call_id`. Content: {message.extract_text(sep='\n')}",
+        )
 
     response_data, tool_result_parts = _tool_result_to_response_and_parts(message.content)
     return Part(
@@ -514,7 +525,11 @@ def _tool_messages_to_google_genai_content(
     execution.
     """
     if not messages:
-        raise ChatProviderError("Expected at least one tool message.")
+        # Return the error to the LLM instead of crashing.
+        return Content(
+            role="user",
+            parts=[Part.from_text(text="Error: Expected at least one tool message.")],
+        )
 
     expected_index: dict[str, int] = (
         {tool_call_id: i for i, tool_call_id in enumerate(expected_tool_call_ids)}
@@ -531,9 +546,21 @@ def _tool_messages_to_google_genai_content(
     actual_tool_call_ids: list[str] = []
     for _, message in indexed_messages:
         if message.tool_call_id is None:
-            raise ChatProviderError("Tool response is missing `tool_call_id`.")
+            # Return the error to the LLM instead of crashing.
+            parts.append(
+                Part.from_text(
+                    text=f"Error: Tool response is missing `tool_call_id`. Content: {message.extract_text(sep='\n')}",
+                )
+            )
+            continue
         if message.tool_call_id in seen_tool_call_ids:
-            raise ChatProviderError(f"Duplicate tool response for id: {message.tool_call_id}")
+            # Return the error to the LLM instead of crashing.
+            parts.append(
+                Part.from_text(
+                    text=f"Error: Duplicate tool response for id: {message.tool_call_id}",
+                )
+            )
+            continue
         seen_tool_call_ids.add(message.tool_call_id)
         actual_tool_call_ids.append(message.tool_call_id)
         parts.append(
@@ -553,9 +580,17 @@ def _tool_messages_to_google_genai_content(
             if tool_call_id not in expected_set
         ]
         if missing:
-            raise ChatProviderError(f"Missing tool responses for ids: {missing}")
+            parts.append(
+                Part.from_text(
+                    text=f"Error: Missing tool responses for ids: {missing}",
+                )
+            )
         if extra:
-            raise ChatProviderError(f"Unexpected tool responses for ids: {extra}")
+            parts.append(
+                Part.from_text(
+                    text=f"Error: Unexpected tool responses for ids: {extra}",
+                )
+            )
 
     return Content(role="user", parts=parts)
 
@@ -627,9 +662,15 @@ def message_to_google_genai(message: Message) -> Content:
     role = message.role
 
     if role == "tool":
-        raise ChatProviderError(
-            "Tool messages must be converted via messages_to_google_genai_contents "
-            "to preserve tool-call ordering and tool-response packing."
+        # Return the error to the LLM instead of crashing.
+        return Content(
+            role="user",
+            parts=[
+                Part.from_text(
+                    text="Error: Tool messages must be converted via messages_to_google_genai_contents "
+                    "to preserve tool-call ordering and tool-response packing."
+                )
+            ],
         )
 
     # GoogleGenAI uses: "user" and "model" (not "assistant")
@@ -659,9 +700,20 @@ def message_to_google_genai(message: Message) -> Content:
             try:
                 parsed_arguments = loads_relaxed(tool_call.function.arguments)
             except json.JSONDecodeError as exc:  # pragma: no cover - defensive guard
-                raise ChatProviderError("Tool call arguments must be valid JSON.") from exc
+                # Return the parse error to the LLM instead of crashing.
+                parts.append(
+                    Part.from_text(
+                        text=f"Error: Tool call '{tool_call.function.name}' has invalid JSON arguments: {exc}",
+                    )
+                )
+                parsed_arguments = {}
             if not isinstance(parsed_arguments, dict):
-                raise ChatProviderError("Tool call arguments must be a JSON object.")
+                parts.append(
+                    Part.from_text(
+                        text=f"Error: Tool call '{tool_call.function.name}' arguments must be a JSON object, got {type(parsed_arguments).__name__}.",
+                    )
+                )
+                parsed_arguments = {}
             args = cast(dict[str, object], parsed_arguments)
         else:
             args = {}

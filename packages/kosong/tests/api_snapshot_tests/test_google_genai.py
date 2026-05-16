@@ -362,24 +362,13 @@ async def test_google_genai_vertexai_message_conversion():
                         {
                             "parts": [
                                 {"text": "I'll add those numbers for you."},
-                                {
-                                    "function_call": {
-                                        "args": {"a": 2, "b": 3},
-                                        "name": "add",
-                                    }
-                                },
+                                {"functionCall": {"args": {"a": 2, "b": 3}, "name": "add"}},
                             ],
                             "role": "model",
                         },
                         {
                             "parts": [
-                                {
-                                    "function_response": {
-                                        "parts": [],
-                                        "name": "add",
-                                        "response": {"output": "5"},
-                                    }
-                                }
+                                {"functionResponse": {"parts": [], "name": "add", "response": {"output": "5"}}}
                             ],
                             "role": "user",
                         },
@@ -392,41 +381,27 @@ async def test_google_genai_vertexai_message_conversion():
                         {
                             "parts": [
                                 {"text": "I'll calculate both."},
-                                {
-                                    "function_call": {
-                                        "args": {"a": 2, "b": 3},
-                                        "name": "add",
-                                    }
-                                },
-                                {
-                                    "function_call": {
-                                        "args": {"a": 4, "b": 5},
-                                        "name": "multiply",
-                                    }
-                                },
+                                {"functionCall": {"args": {"a": 2, "b": 3}, "name": "add"}},
+                                {"functionCall": {"args": {"a": 4, "b": 5}, "name": "multiply"}},
                             ],
                             "role": "model",
                         },
                         {
                             "parts": [
-                                {
-                                    "function_response": {
-                                        "parts": [],
-                                        "name": "add",
-                                        "response": {
-                                            "output": "<system-reminder>This is a system reminder</system-reminder>5"  # noqa: E501
-                                        },
-                                    }
-                                },
-                                {
-                                    "function_response": {
-                                        "parts": [],
-                                        "name": "multiply",
-                                        "response": {
-                                            "output": "<system-reminder>This is a system reminder</system-reminder>20"  # noqa: E501
-                                        },
-                                    }
-                                },
+                                {"functionResponse": {
+    "parts": [],
+    "name": "add",
+    "response": {
+        "output": "<system-reminder>This is a system reminder</system-reminder>5"
+    },
+}},
+                                {"functionResponse": {
+    "parts": [],
+    "name": "multiply",
+    "response": {
+        "output": "<system-reminder>This is a system reminder</system-reminder>20"
+    },
+}},
                             ],
                             "role": "user",
                         },
@@ -475,13 +450,7 @@ async def test_google_genai_vertexai_message_conversion():
                         {
                             "parts": [
                                 {"text": "I'll add those."},
-                                {
-                                    "function_call": {
-                                        "args": {"a": 2, "b": 3},
-                                        "name": "add",
-                                    },
-                                    "thought_signature": "dGhvdWdodF9zaWduYXR1cmVfZGF0YQ==",
-                                },
+                                {"functionCall": {"args": {"a": 2, "b": 3}, "name": "add"}, "thoughtSignature": "dGhvdWdodF9zaWduYXR1cmVfZGF0YQ=="},
                             ],
                             "role": "model",
                         },
