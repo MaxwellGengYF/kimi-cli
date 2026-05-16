@@ -18,7 +18,7 @@ from kosong.message import Message, TextPart, ToolCall
 # Force google-genai to use httpx so respx can mock requests.
 _api_client.has_aiohttp = False
 
-from kosong.contrib.chat_provider.google_genai import GoogleGenAI  # noqa: E402
+from kosong.contrib.chat_provider.google_genai import GoogleGenAI, GoogleGenAIStreamedMessage  # noqa: E402
 
 
 def make_response() -> dict[str, Any]:
@@ -324,34 +324,24 @@ async def test_google_genai_vertexai_message_conversion():
                             "functionDeclarations": [
                                 {
                                     "description": "Add two integers.",
-                                    "name": "add",
-                                    "parametersJsonSchema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "a": {"type": "integer", "description": "First number"},
-                                            "b": {
-                                                "type": "integer",
-                                                "description": "Second number",
-                                            },
-                                        },
-                                        "required": ["a", "b"],
-                                    },
-                                },
+                                    "name": "add", "parameters_json_schema": {
+    "type": "object",
+    "properties": {
+        "a": {"type": "integer", "description": "First number"},
+        "b": {"type": "integer", "description": "Second number"},
+    },
+    "required": ["a", "b"],
+}},
                                 {
                                     "description": "Multiply two integers.",
-                                    "name": "multiply",
-                                    "parametersJsonSchema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "a": {"type": "integer", "description": "First number"},
-                                            "b": {
-                                                "type": "integer",
-                                                "description": "Second number",
-                                            },
-                                        },
-                                        "required": ["a", "b"],
-                                    },
-                                },
+                                    "name": "multiply", "parameters_json_schema": {
+    "type": "object",
+    "properties": {
+        "a": {"type": "integer", "description": "First number"},
+        "b": {"type": "integer", "description": "Second number"},
+    },
+    "required": ["a", "b"],
+}},
                             ]
                         }
                     ],
@@ -412,34 +402,24 @@ async def test_google_genai_vertexai_message_conversion():
                             "functionDeclarations": [
                                 {
                                     "description": "Add two integers.",
-                                    "name": "add",
-                                    "parametersJsonSchema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "a": {"type": "integer", "description": "First number"},
-                                            "b": {
-                                                "type": "integer",
-                                                "description": "Second number",
-                                            },
-                                        },
-                                        "required": ["a", "b"],
-                                    },
-                                },
+                                    "name": "add", "parameters_json_schema": {
+    "type": "object",
+    "properties": {
+        "a": {"type": "integer", "description": "First number"},
+        "b": {"type": "integer", "description": "Second number"},
+    },
+    "required": ["a", "b"],
+}},
                                 {
                                     "description": "Multiply two integers.",
-                                    "name": "multiply",
-                                    "parametersJsonSchema": {
-                                        "type": "object",
-                                        "properties": {
-                                            "a": {"type": "integer", "description": "First number"},
-                                            "b": {
-                                                "type": "integer",
-                                                "description": "Second number",
-                                            },
-                                        },
-                                        "required": ["a", "b"],
-                                    },
-                                },
+                                    "name": "multiply", "parameters_json_schema": {
+    "type": "object",
+    "properties": {
+        "a": {"type": "integer", "description": "First number"},
+        "b": {"type": "integer", "description": "Second number"},
+    },
+    "required": ["a", "b"],
+}},
                             ]
                         }
                     ],
@@ -535,3 +515,144 @@ async def test_google_genai_with_thinking():
         assert body.get("generationConfig", {}).get("thinkingConfig") == snapshot(
             {"include_thoughts": True, "thinking_budget": 32000}
         )
+
+
+# -----------------------------------------------------------------------------
+# Malformed tool-call arguments (defensive parsing)
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected_error_substring"),
+    [
+        ('{"a": 1, "b": 2', "invalid JSON arguments"),  # broken JSON
+        ("<args><a>1</a></args>", "invalid JSON arguments"),  # XML
+        ("a: 1\nb: 2", "invalid JSON arguments"),  # YAML
+        ("{{a=1, b=2}}", "invalid JSON arguments"),  # DSML-like
+        ("not json at all", "invalid JSON arguments"),  # garbage
+        ("[1, 2, 3]", "must be a JSON object"),  # valid JSON, but array
+    ],
+    ids=["broken_json", "xml", "yaml", "dsml", "garbage", "json_array"],
+)
+async def test_google_genai_malformed_tool_call_arguments_in_request(
+    arguments: str, expected_error_substring: str
+):
+    """Malformed tool-call arguments in history must be surfaced to the LLM, not crash."""
+    from common import capture_request
+
+    provider = GoogleGenAI(model="gemini-2.5-flash", api_key="test-key", stream=False)
+    history = [
+        Message(
+            role="assistant",
+            content=[TextPart(text="I'll call a tool.")],
+            tool_calls=[
+                ToolCall(
+                    id="call_bad",
+                    function=ToolCall.FunctionBody(name="add", arguments=arguments),
+                )
+            ],
+        )
+    ]
+
+    with respx.mock(base_url="https://generativelanguage.googleapis.com") as mock:
+        mock.route(method="POST", path__regex=r"/v1beta/models/.+:generateContent").mock(
+            return_value=Response(200, json=make_response())
+        )
+        body = await capture_request(mock, provider, "", [], history)
+
+    contents = body["contents"]
+    assert len(contents) == 1
+    parts = contents[0]["parts"]
+    assert parts[0]["text"] == "I'll call a tool."
+    assert expected_error_substring in parts[1]["text"]
+    assert parts[2]["functionCall"]["args"] == {}
+    assert parts[2]["functionCall"]["name"] == "add"
+
+
+async def test_google_genai_empty_tool_call_arguments_in_request():
+    """Empty string arguments should produce empty functionCall args, not an error."""
+    from common import capture_request
+
+    provider = GoogleGenAI(model="gemini-2.5-flash", api_key="test-key", stream=False)
+    history = [
+        Message(
+            role="assistant",
+            content=[TextPart(text="I'll call a tool.")],
+            tool_calls=[
+                ToolCall(
+                    id="call_empty",
+                    function=ToolCall.FunctionBody(name="add", arguments=""),
+                )
+            ],
+        )
+    ]
+
+    with respx.mock(base_url="https://generativelanguage.googleapis.com") as mock:
+        mock.route(method="POST", path__regex=r"/v1beta/models/.+:generateContent").mock(
+            return_value=Response(200, json=make_response())
+        )
+        body = await capture_request(mock, provider, "", [], history)
+
+    contents = body["contents"]
+    assert len(contents) == 1
+    parts = contents[0]["parts"]
+    assert len(parts) == 2
+    assert parts[0]["text"] == "I'll call a tool."
+    assert parts[1]["functionCall"]["args"] == {}
+    assert parts[1]["functionCall"]["name"] == "add"
+
+
+async def test_google_genai_none_function_call_args_in_response():
+    """Backend returning function_call with args=None must produce empty arguments."""
+    from google.genai.types import (
+        Candidate,
+        Content,
+        FunctionCall,
+        GenerateContentResponse,
+        Part,
+    )
+
+    response = GenerateContentResponse(
+        candidates=[
+            Candidate(
+                content=Content(
+                    parts=[Part(function_call=FunctionCall(name="add", args=None))],
+                    role="model",
+                ),
+                finish_reason="STOP",
+            )
+        ]
+    )
+    stream = GoogleGenAIStreamedMessage(response)
+    parts = [p async for p in stream]
+    assert len(parts) == 1
+    assert isinstance(parts[0], ToolCall)
+    assert parts[0].function.arguments == "{}"
+
+
+async def test_google_genai_empty_dict_function_call_args_in_response():
+    """Backend returning function_call with args={} must produce empty arguments."""
+    from google.genai.types import (
+        Candidate,
+        Content,
+        FunctionCall,
+        GenerateContentResponse,
+        Part,
+    )
+
+    response = GenerateContentResponse(
+        candidates=[
+            Candidate(
+                content=Content(
+                    parts=[Part(function_call=FunctionCall(name="add", args={}))],
+                    role="model",
+                ),
+                finish_reason="STOP",
+            )
+        ]
+    )
+    stream = GoogleGenAIStreamedMessage(response)
+    parts = [p async for p in stream]
+    assert len(parts) == 1
+    assert isinstance(parts[0], ToolCall)
+    assert parts[0].function.arguments == "{}"

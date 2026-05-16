@@ -586,11 +586,38 @@ class AnthropicStreamedMessage:
                 case "redacted_thinking":
                     yield ThinkPart(think="", encrypted=block.data)
                 case "tool_use":
+                    if isinstance(block.input, dict):
+                        args = orjson.dumps(block.input).decode()
+                    elif isinstance(block.input, str):
+                        from kosong.utils.jsonx import loads_relaxed
+                        try:
+                            parsed = loads_relaxed(block.input)
+                            if isinstance(parsed, dict):
+                                args = block.input
+                            else:
+                                yield TextPart(
+                                    text=(
+                                        f"Error: Tool call '{block.name}' returned non-object input: {block.input}"
+                                    )
+                                )
+                                continue
+                        except json.JSONDecodeError:
+                            yield TextPart(
+                                text=(
+                                    f"Error: Tool call '{block.name}' returned invalid JSON input: {block.input}"
+                                )
+                            )
+                            continue
+                    else:
+                        yield TextPart(
+                            text=(
+                                f"Error: Tool call '{block.name}' returned unexpected input type {type(block.input).__name__}: {block.input}"
+                            )
+                        )
+                        continue
                     yield ToolCall(
                         id=block.id,
-                        function=ToolCall.FunctionBody(
-                            name=block.name, arguments=orjson.dumps(block.input).decode()
-                        ),
+                        function=ToolCall.FunctionBody(name=block.name, arguments=args),
                     )
                 case _:
                     continue

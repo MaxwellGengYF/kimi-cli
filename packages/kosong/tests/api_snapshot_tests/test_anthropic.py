@@ -11,7 +11,7 @@ from inline_snapshot import snapshot
 pytest.importorskip("anthropic", reason="Optional contrib dependency not installed")
 
 from kosong.contrib.chat_provider.anthropic import Anthropic
-from kosong.message import ImageURLPart, Message, TextPart, ThinkPart
+from kosong.message import ImageURLPart, Message, TextPart, ThinkPart, ToolCall
 
 TEST_CASES: dict[str, Case] = {
     **COMMON_CASES,
@@ -904,3 +904,163 @@ async def test_anthropic_parallel_tool_results_merged_into_single_user_message()
     )
     tool_results = [b for b in messages[-1]["content"] if b["type"] == "tool_result"]
     assert {b["tool_use_id"] for b in tool_results} == {"call_add", "call_mul"}
+
+
+# -----------------------------------------------------------------------------
+# Malformed tool-call arguments (defensive parsing)
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("arguments", "expected_error_substring"),
+    [
+        ('{"a": 1, "b": 2', "invalid JSON arguments"),  # broken JSON
+        ("<args><a>1</a></args>", "invalid JSON arguments"),  # XML
+        ("a: 1\nb: 2", "invalid JSON arguments"),  # YAML
+        ("{{a=1, b=2}}", "invalid JSON arguments"),  # DSML-like
+        ("not json at all", "invalid JSON arguments"),  # garbage
+        ("[1, 2, 3]", "must be a JSON object"),  # valid JSON, but array
+    ],
+    ids=["broken_json", "xml", "yaml", "dsml", "garbage", "json_array"],
+)
+async def test_anthropic_malformed_tool_call_arguments_in_request(
+    arguments: str, expected_error_substring: str
+):
+    """Malformed tool-call arguments in history must be surfaced to the LLM, not crash."""
+    from common import capture_request
+
+    provider = Anthropic(
+        model="claude-sonnet-4-20250514",
+        api_key="test-key",
+        default_max_tokens=1024,
+        stream=False,
+    )
+    history = [
+        Message(
+            role="assistant",
+            content=[TextPart(text="I'll call a tool.")],
+            tool_calls=[
+                ToolCall(
+                    id="call_bad",
+                    function=ToolCall.FunctionBody(name="add", arguments=arguments),
+                )
+            ],
+        )
+    ]
+
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        body = await capture_request(mock, provider, "", [], history)
+
+    messages = body["messages"]
+    assert len(messages) == 1
+    content = messages[0]["content"]
+    assert content[0]["type"] == "text"
+    assert content[0]["text"] == "I'll call a tool."
+    assert content[1]["type"] == "text"
+    assert expected_error_substring in content[1]["text"]
+    assert content[2]["type"] == "tool_use"
+    assert content[2]["input"] == {}
+    assert content[2]["name"] == "add"
+    assert content[2]["id"] == "call_bad"
+
+
+async def test_anthropic_empty_tool_call_arguments_in_request():
+    """Empty string arguments should produce an empty tool_use input, not an error."""
+    from common import capture_request
+
+    provider = Anthropic(
+        model="claude-sonnet-4-20250514",
+        api_key="test-key",
+        default_max_tokens=1024,
+        stream=False,
+    )
+    history = [
+        Message(
+            role="assistant",
+            content=[TextPart(text="I'll call a tool.")],
+            tool_calls=[
+                ToolCall(
+                    id="call_empty",
+                    function=ToolCall.FunctionBody(name="add", arguments=""),
+                )
+            ],
+        )
+    ]
+
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        body = await capture_request(mock, provider, "", [], history)
+
+    messages = body["messages"]
+    assert len(messages) == 1
+    content = messages[0]["content"]
+    assert len(content) == 2
+    assert content[0]["type"] == "text"
+    assert content[0]["text"] == "I'll call a tool."
+    assert content[1]["type"] == "tool_use"
+    assert content[1]["input"] == {}
+    assert content[1]["name"] == "add"
+    assert content[1]["id"] == "call_empty"
+
+
+@pytest.mark.parametrize(
+    ("input_value", "expected_type", "expected_content"),
+    [
+        ({"a": 1, "b": 2}, "tool_call", '{"a":1,"b":2}'),
+        ('{"a": 1, "b": 2}', "tool_call", '{"a": 1, "b": 2}'),
+        ("<args><a>1</a></args>", "text_error", "invalid JSON input"),
+        ("a: 1\nb: 2", "text_error", "invalid JSON input"),
+        ("{{a=1, b=2}}", "text_error", "invalid JSON input"),
+        ("not json at all", "text_error", "invalid JSON input"),
+        ("[1, 2, 3]", "text_error", "non-object input"),
+    ],
+    ids=["dict", "json_string", "xml", "yaml", "dsml", "garbage", "array_string"],
+)
+async def test_anthropic_malformed_tool_use_in_response(
+    input_value: object, expected_type: str, expected_content: str
+):
+    """Backend returning tool_use with unexpected input types must not crash."""
+    provider = Anthropic(
+        model="claude-sonnet-4-20250514",
+        api_key="test-key",
+        default_max_tokens=1024,
+        stream=False,
+    )
+
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(
+            return_value=Response(
+                200,
+                json={
+                    "id": "msg_test",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude-test",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "tool_1",
+                            "name": "add",
+                            "input": input_value,
+                        }
+                    ],
+                    "stop_reason": "end_turn",
+                    "usage": {"input_tokens": 10, "output_tokens": 5},
+                },
+            )
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        parts = [p async for p in stream]
+
+    assert len(parts) == 1
+    if expected_type == "tool_call":
+        from kosong.message import ToolCall as ToolCallClass
+
+        assert isinstance(parts[0], ToolCallClass)
+        assert parts[0].function.arguments == expected_content
+    else:
+        from kosong.message import TextPart as TextPartClass
+
+        assert isinstance(parts[0], TextPartClass)
+        assert expected_content in parts[0].text
