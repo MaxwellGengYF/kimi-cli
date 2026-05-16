@@ -22,11 +22,9 @@ from kimi_cli.utils.path import (
 MAX_MATCHES = 1000
 GLOB_DESC_PATH = Path(__file__).parent / "glob.md"
 WINDOWS_PATH_HINT = (
-    "On Windows, the `directory` parameter accepts both Windows native paths "
-    "(`C:\\Users\\foo`) and POSIX-style paths (`/c/Users/foo`, "
-    "`/cygdrive/c/Users/foo`). Returned paths are in Windows native form with "
-    "backslashes (NOT POSIX) — convert to forward slashes before using them "
-    "in Shell commands."
+    "Windows: `directory` accepts native (`C:\\Users\\foo`) and POSIX-style "
+    "(`/c/Users/foo`) paths. Results use backslashes — convert to forward "
+    "slashes for shell commands."
 )
 
 
@@ -65,19 +63,39 @@ class Glob(CallableTool2[Params]):
 
     async def _validate_pattern(self, pattern: str) -> ToolError | None:
         """Validate that the pattern is safe to use."""
-        if pattern.startswith("**"):
-            ls_result = await list_directory(self._work_dir)
+        # Normalize backslashes for consistent cross-platform validation
+        norm = pattern.replace("\\", "/")
+        if not norm.startswith("**"):
+            return None
+
+        ls_result = await list_directory(self._work_dir)
+
+        if norm == "**/**" or norm == "**/*":
             return ToolError(
                 output=ls_result,
                 message=(
-                    f"Pattern `{pattern}` starts with '**', which is not allowed as it "
-                    "recursively searches all directories and may include large ones like "
-                    "`node_modules`. Use a more specific pattern. Below are the top-level "
-                    "files and directories in the working directory."
+                    f"Pattern `{pattern}` starts with `**`, which is disallowed. "
+                    "Use a more specific pattern. Top-level items in working directory:"
                 ),
                 brief="Unsafe pattern",
             )
-        return None
+
+        # For **/<file-name>, also check if the file exists at the root directory
+        if norm.startswith("**/") and "/" not in norm[3:]:
+            file_name = norm[3:]
+            root_file = self._work_dir / file_name
+            if await root_file.exists():
+                rel_path = str(root_file.relative_to(self._work_dir))
+                ls_result = f"{ls_result}\n{rel_path}"
+
+        return ToolError(
+            output=ls_result,
+            message=(
+                f"Pattern `{pattern}` starts with `**`, which is disallowed. "
+                "Use a more specific pattern. Top-level items in working directory:"
+            ),
+            brief="Unsafe pattern",
+        )
 
     # async def _validate_directory(self, directory: KaosPath) -> ToolError | None:
     #     """Validate that the directory is safe to search."""
@@ -147,8 +165,8 @@ class Glob(CallableTool2[Params]):
 
             if truncated:
                 message += (
-                    f" Only the first {MAX_MATCHES} matches are returned. "
-                    "You may want to use a more specific pattern."
+                    f" Showing first {MAX_MATCHES} matches. "
+                    "Use a more specific pattern."
                 )
 
             return ToolOk(
@@ -161,6 +179,6 @@ class Glob(CallableTool2[Params]):
                 "Glob failed: pattern={pattern}: {error}", pattern=params.pattern, error=e
             )
             return ToolError(
-                message=f"Failed to search for pattern {params.pattern}. Error: {e}",
+                message=f"Glob failed for `{params.pattern}`: {e}",
                 brief="Glob failed",
             )
