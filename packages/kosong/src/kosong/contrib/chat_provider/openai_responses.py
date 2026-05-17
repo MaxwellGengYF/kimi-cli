@@ -1,4 +1,5 @@
 import copy
+import json
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Self, TypedDict, Unpack, cast, get_args
@@ -236,6 +237,7 @@ class OpenAIResponses:
         content: str kept; list[ContentPart] mapped to ResponseInputMessageContentListParam
         - role == tool: map to FunctionCallOutput with call_id and output
         """
+        message = message.model_copy(deep=True)
 
         role = message.role
         if is_openai_model(self.model_name) and role == "system":
@@ -243,7 +245,17 @@ class OpenAIResponses:
 
         # tool role → function_call_output (return value from a prior tool call)
         if role == "tool":
-            call_id = message.tool_call_id or ""
+            # Tool message without tool_call_id would cause a 400 from OpenAI.
+            # Return the error to the LLM instead of crashing.
+            if message.tool_call_id is None:
+                return [
+                    {
+                        "role": "user",
+                        "content": f"Error: Tool message is missing `tool_call_id`. Content: {message.extract_text(sep='\n')}",
+                        "type": "message",
+                    }
+                ]
+            call_id = message.tool_call_id
             if self._tool_message_conversion == "extract_text":
                 content = message.extract_text(sep="\n")
             else:
@@ -257,6 +269,29 @@ class OpenAIResponses:
                     "type": "function_call_output",
                 }
             ]
+
+        # Validate tool call arguments in assistant messages to avoid API 400s.
+        if role == "assistant" and message.tool_calls:
+            from kosong.utils.jsonx import loads_relaxed
+
+            error_texts: list[str] = []
+            for tool_call in message.tool_calls:
+                if tool_call.function.arguments:
+                    try:
+                        parsed = loads_relaxed(tool_call.function.arguments)
+                    except json.JSONDecodeError as exc:
+                        error_texts.append(
+                            f"Error: Tool call '{tool_call.function.name}' has invalid JSON arguments: {exc}"
+                        )
+                        tool_call.function.arguments = "{}"
+                        continue
+                    if not isinstance(parsed, dict):
+                        error_texts.append(
+                            f"Error: Tool call '{tool_call.function.name}' arguments must be a JSON object, got {type(parsed).__name__}."
+                        )
+                        tool_call.function.arguments = "{}"
+            if error_texts:
+                message.content = [TextPart(text="\n".join(error_texts)), *message.content]
 
         result: list[ResponseInputItemParam] = []
 

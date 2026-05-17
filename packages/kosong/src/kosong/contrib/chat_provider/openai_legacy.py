@@ -1,4 +1,5 @@
 import copy
+import json
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import TYPE_CHECKING, Any, Self, Unpack, cast
@@ -138,6 +139,19 @@ class OpenAILegacy:
             if has_think_part:
                 reasoning_effort = "medium"
 
+        extra_body: dict[str, Any] = {
+            "thinking": {
+                "type": "enabled" if reasoning_effort is not None and not isinstance(reasoning_effort, Omit) else "disabled",
+            }
+        }
+        if existing_extra_body := generation_kwargs.get("extra_body"):
+            merged_extra_body: dict[str, Any] = {**extra_body, **existing_extra_body}
+            auto_thinking = extra_body.get("thinking")
+            user_thinking = existing_extra_body.get("thinking")
+            if auto_thinking is not None and user_thinking is not None:
+                merged_extra_body["thinking"] = {**auto_thinking, **user_thinking}
+            extra_body = merged_extra_body
+        generation_kwargs["extra_body"] = extra_body
         try:
             response = await self.client.chat.completions.create(
                 model=self.model,
@@ -199,6 +213,41 @@ class OpenAILegacy:
         # So we use `system` role here. OpenAIResponses will use `developer` role.
         # See https://cdn.openai.com/spec/model-spec-2024-05-08.html#definitions
         message = message.model_copy(deep=True)
+
+        # Tool message without tool_call_id would cause a 400 from OpenAI.
+        # Return the error to the LLM instead of crashing.
+        if message.role == "tool" and message.tool_call_id is None:
+            return cast(
+                ChatCompletionMessageParam,
+                {
+                    "role": "user",
+                    "content": f"Error: Tool message is missing `tool_call_id`. Content: {message.extract_text(sep='\n')}",
+                },
+            )
+
+        # Validate tool call arguments in assistant messages to avoid API 400s.
+        if message.role == "assistant" and message.tool_calls:
+            from kosong.utils.jsonx import loads_relaxed
+
+            error_texts: list[str] = []
+            for tool_call in message.tool_calls:
+                if tool_call.function.arguments:
+                    try:
+                        parsed = loads_relaxed(tool_call.function.arguments)
+                    except json.JSONDecodeError as exc:
+                        error_texts.append(
+                            f"Error: Tool call '{tool_call.function.name}' has invalid JSON arguments: {exc}"
+                        )
+                        tool_call.function.arguments = "{}"
+                        continue
+                    if not isinstance(parsed, dict):
+                        error_texts.append(
+                            f"Error: Tool call '{tool_call.function.name}' arguments must be a JSON object, got {type(parsed).__name__}."
+                        )
+                        tool_call.function.arguments = "{}"
+            if error_texts:
+                message.content = [TextPart(text="\n".join(error_texts)), *message.content]
+
         reasoning_content: str = ""
         content: list[ContentPart] = []
         for part in message.content:

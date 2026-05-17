@@ -50,6 +50,14 @@ def _on_close_task_done(task: asyncio.Task[None]) -> None:
 async def _drain_awaitable(awaitable: Awaitable[object]) -> None:
     try:
         await awaitable
+    except RuntimeError as exc:
+        # On Windows/Python 3.14, closing an httpx.AsyncClient whose
+        # underlying transports were bound to a now-closed ProactorEventLoop
+        # raises RuntimeError('Event loop is closed').  This is harmless —
+        # the OS will reclaim the socket — so we swallow it.
+        if "Event loop is closed" in str(exc):
+            return
+        raise
     except Exception:
         return
 
@@ -67,12 +75,11 @@ def close_openai_client(client: AsyncOpenAI) -> None:
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
-        # No event loop running — close synchronously so the client
-        # doesn't outlive its creation loop.
-        try:
-            asyncio.run(_drain_awaitable(cast(Awaitable[object], result)))
-        except Exception:
-            pass
+        # No event loop running.  The client's original loop is gone.
+        # Creating a new loop to close it will fail for any transport
+        # bound to the old loop (ProactorEventLoop on Windows raises
+        # RuntimeError('Event loop is closed')).  Just abandon the
+        # client — the OS will clean up the sockets on process exit.
         return
     # Loop is running but we're in a sync context (e.g. on_retryable_error).
     # Create a task and keep a strong reference so it can run to completion.
