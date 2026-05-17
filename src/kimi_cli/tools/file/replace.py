@@ -4,6 +4,8 @@ from pathlib import Path
 from stat import S_ISREG
 from typing import override
 
+import json_repair
+
 from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
@@ -205,6 +207,19 @@ class EditFile(CallableTool2[Params]):
                 fmt_error = check_toml_text(new_content)
             elif suffix == ".xml":
                 fmt_error = check_xml_text(new_content)
+
+            # Try to repair broken JSON before writing
+            if is_json and fmt_error:
+                try:
+                    repaired_text = json_repair.repair_json(new_content, return_objects=False)
+                    if repaired_text:
+                        new_content = repaired_text
+                        fmt_error = None
+                        diff_blocks = await build_diff_blocks(
+                            str(logical_path), original_content, new_content
+                        )
+                except Exception:
+                    pass
 
             # Write the modified content back to the file
             await p.write_text(new_content, errors="replace")

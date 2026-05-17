@@ -1,3 +1,4 @@
+import json_repair
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, override
@@ -158,6 +159,16 @@ class WriteFile(CallableTool2[Params]):
                 fmt_error = check_toml_text(new_text)
             elif file_path_str.lower().endswith(".xml"):
                 fmt_error = check_xml_text(new_text)
+
+            # Try to repair broken JSON before building diff
+            if is_json and fmt_error:
+                try:
+                    repaired_text = json_repair.repair_json(new_text, return_objects=False)
+                    if repaired_text:
+                        new_text = repaired_text
+                        fmt_error = None
+                except Exception:
+                    pass
 
             # Build diff blocks
             diff_blocks: list[DisplayBlock]
