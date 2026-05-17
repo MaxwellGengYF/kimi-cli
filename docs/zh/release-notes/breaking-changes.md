@@ -189,7 +189,7 @@ Gemini Developer API 的供应商类型从 `google_genai` 重命名为 `gemini`�
 `PatchFile` 工具已移除。
 
 - **受影响**：使用 `PatchFile` 工具的 Agent 配置
-- **替代**：使用 `StrReplaceFile` 工具进行文件修改
+- **替代**：使用 `EditFile` 工具进行文件修改
 
 ## 0.52 - CLI 选项变更
 

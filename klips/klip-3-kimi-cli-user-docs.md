@@ -323,7 +323,7 @@ Status: Implemented
 ### 内置工具 / Built-in tools
 
 * 默认启用工具 / Default tools
-  * `Task`、`SetTodoList`、`Shell`、`ReadFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL`
+  * `Task`、`SetTodoList`、`Shell`、`ReadFile`、`Glob`、`Grep`、`WriteFile`、`EditFile`、`SearchWeb`、`FetchURL`
   * 参考代码: `src/kimi_cli/agents/default/agent.yaml`, `src/kimi_cli/tools/`, `src/kimi_cli/tools/utils.py`
 * 可选工具 / Optional tools
   * `Think`、`SendDMail`、`CreateSubagent`

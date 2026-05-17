@@ -29,7 +29,7 @@ Only write entries that are worth mentioning to users.
 
 - Shell: Switch the Windows shell backend from PowerShell to Git Bash, so the Shell tool now runs commands through `bash.exe` (POSIX semantics) instead of `powershell.exe`. Windows users get the same Unix-style command syntax (`&&`, `||`, `|`, `/dev/null`, `grep`, `sed`, etc.) as Linux/macOS. **Requires Git for Windows installed**: kimi-cli locates `bash.exe` via the `KIMI_CLI_GIT_BASH_PATH` env override → `where.exe git` → standard install paths (`C:\Program Files\Git\bin\bash.exe`); if none resolve, kimi-cli prints an install hint and exits at startup
 - Shell: Defend against hallucinated CMD-style `2>nul` redirects on Windows by rewriting them to `2>/dev/null` before reaching git-bash — without this defense git-bash would create a file literally named `nul` (a Windows reserved device name) that breaks `git add .` and `git clone`; on Linux/macOS, `>nul` is a legitimate redirect to a file named `nul` and is left untouched
-- File: Accept POSIX-form paths on Windows in `ReadFile`, `WriteFile`, `StrReplaceFile`, `Glob`, and `Grep` — these tools now recognize `/c/Users/foo` (Git Bash style), `/cygdrive/c/Users/foo` (Cygwin style), and `\\server\share` (UNC) in addition to native Windows paths, automatically converting to native form for filesystem operations
+- File: Accept POSIX-form paths on Windows in `ReadFile`, `WriteFile`, `EditFile`, `Glob`, and `Grep` — these tools now recognize `/c/Users/foo` (Git Bash style), `/cygdrive/c/Users/foo` (Cygwin style), and `\\server\share` (UNC) in addition to native Windows paths, automatically converting to native form for filesystem operations
 - Shell: Clear partial streamed output when an LLM step is retried — previously, if a step failed mid-stream (e.g. rate limit or server error), the incomplete text and unfinished tool-call blocks from the aborted attempt would remain on screen and be mixed with the new attempt's output. The shell UI now discards the partial state and prints a retry banner showing the reason, attempt count, and wait time; print mode also discards buffered assistant messages on retry
 - Wire: Bump protocol version to 1.10 — add `StepRetry` event emitted when a step attempt fails and will be retried, carrying attempt count, wait time, and error details
 - Core: Stop plan-mode and afk-mode workflow prompts from being injected into subagents — subagents share session-level mode state for persistence, but their YAMLs typically exclude root workflow tools such as `EnterPlanMode`, `ExitPlanMode`, and `AskUserQuestion`. These prompt injections are now root-only. Tool-level read-only checks under plan mode are unchanged, so behavior compatibility is preserved
@@ -271,7 +271,7 @@ Only write entries that are worth mentioning to users.
 - Shell: Increase pasted text placeholder thresholds to 1000 characters or 15 lines (previously 300 characters or 3 lines), making voice/typeless workflows less disruptive
 - Core: Plan mode now supports multiple selectable approach options — when the agent's plan contains distinct alternative paths, `ExitPlanMode` can present 2–3 labeled choices for the user to pick which approach to execute; the chosen option is returned to the agent as the selected approach
 - Core: Persist plan session ID and file path across process restarts — the plan session identifier and file slug are saved to `SessionState`, so restarting Kimi Code mid-plan resumes the same plan file in `~/.kimi/plans/` instead of creating a new one
-- Core: Plan mode now supports incremental plan edits — the agent can use `StrReplaceFile` to surgically update sections of the plan file instead of rewriting the entire file with `WriteFile`, and non-plan file edits are now hard-blocked rather than requiring approval
+- Core: Plan mode now supports incremental plan edits — the agent can use `EditFile` to surgically update sections of the plan file instead of rewriting the entire file with `WriteFile`, and non-plan file edits are now hard-blocked rather than requiring approval
 - Core: Defer MCP startup and surface loading progress — MCP servers now initialize asynchronously after the shell UI starts, with live progress indicators showing connection status; Shell displays connecting and ready states in the status area, Web shows server connection status
 - Core: Optimize lightweight startup paths — implement lazy-loading for CLI subcommands and version metadata, significantly reducing startup time for common commands like `--version` and `--help`
 - Build: Fix Nix `FileCollisionError` for `bin/kimi` — remove duplicate entry point from `kimi-code` package so `kimi-cli` owns `bin/kimi` exclusively
@@ -552,7 +552,7 @@ Only write entries that are worth mentioning to users.
 
 ## 0.82 (2026-01-21)
 
-- Tool: Allow `WriteFile` and `StrReplaceFile` tools to edit/write files outside the working directory when using absolute paths
+- Tool: Allow `WriteFile` and `EditFile` tools to edit/write files outside the working directory when using absolute paths
 - Tool: Upload videos to Kimi files API when using Kimi provider, replacing inline data URLs with `ms://` references
 - Config: Add `reserved_context_size` setting to customize auto-compaction trigger threshold (default: 50000 tokens)
 
@@ -660,7 +660,7 @@ Only write entries that are worth mentioning to users.
 
 - CLI: Add `--config` and `--config-file` options to pass in config JSON/TOML
 - Core: Allow `Config` in addition to `Path` for the `config` parameter of `KimiCLI.create`
-- Tool: Include diff display blocks in `WriteFile` and `StrReplaceFile` approvals/results
+- Tool: Include diff display blocks in `WriteFile` and `EditFile` approvals/results
 - Wire: Add display blocks to approval requests (including diffs) with backward-compatible defaults
 - ACP: Show file diff previews in tool results and approval prompts
 - ACP: Connect to MCP servers managed by ACP clients
@@ -1185,7 +1185,7 @@ Only write entries that are worth mentioning to users.
 
 ### Added
 
-- Add `StrReplaceFile` tool
+- Add `EditFile` tool
 
 ### Improved
 

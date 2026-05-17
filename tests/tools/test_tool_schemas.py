@@ -11,7 +11,7 @@ from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.read_media import ReadMediaFile
-from kimi_cli.tools.file.replace import StrReplaceFile
+from kimi_cli.tools.file.replace import EditFile
 from kimi_cli.tools.file.write import WriteFile
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.think import Think
@@ -426,9 +426,9 @@ def test_write_file_params_schema(write_file_tool: WriteFile):
     )
 
 
-def test_str_replace_file_params_schema(str_replace_file_tool: StrReplaceFile):
-    """Test the schema of StrReplaceFile tool parameters."""
-    assert str_replace_file_tool.base.parameters == snapshot(
+def test_edit_file_params_schema(edit_file_tool: EditFile):
+    """Test the schema of EditFile tool parameters."""
+    assert edit_file_tool.base.parameters == snapshot(
         {
             "properties": {
                 "path": {

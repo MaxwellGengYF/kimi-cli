@@ -83,7 +83,7 @@ class EnterPlanMode(CallableTool2[Params]):
                     f"Workflow: identify key questions about the codebase → "
                     f"use Agent(subagent_type='explore') to investigate if needed → "
                     f"design approach → "
-                    f"modify the plan file with WriteFile or StrReplaceFile "
+                    f"modify the plan file with WriteFile or EditFile "
                     f"(create it with WriteFile first if it does not exist) → "
                     f"call ExitPlanMode.\n"
                 ),
@@ -171,7 +171,7 @@ class EnterPlanMode(CallableTool2[Params]):
                     f"Workflow: identify key questions about the codebase → "
                     f"use Agent(subagent_type='explore') to investigate if needed → "
                     f"design approach → "
-                    f"modify the plan file with WriteFile or StrReplaceFile "
+                    f"modify the plan file with WriteFile or EditFile "
                     f"(create it with WriteFile first if it does not exist) → "
                     f"call ExitPlanMode.\n"
                     f"Use AskUserQuestion only to clarify missing requirements or choose "

@@ -760,7 +760,7 @@ def test_display_block_diff_str_replace(tmp_path) -> None:
         "\n".join(
             [
                 "text: replace",
-                _tool_call_line("tc-1", "StrReplaceFile", replace_args),
+                _tool_call_line("tc-1", "EditFile", replace_args),
             ]
         ),
         "text: done",
@@ -799,7 +799,7 @@ def test_display_block_diff_str_replace(tmp_path) -> None:
             {
                 "id": "<uuid>",
                 "tool_call_id": "tc-1",
-                "sender": "StrReplaceFile",
+                "sender": "EditFile",
                 "action": "edit file",
                 "description": "Edit file `<work_dir>/file.txt`",
                 "source_kind": "foreground_turn",

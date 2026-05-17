@@ -46,13 +46,13 @@ Kimi Code CLI 支持 13 种生命周期事件：
 # 文件编辑后自动格式化
 [[hooks]]
 event = "PostToolUse"
-matcher = "WriteFile|StrReplaceFile"
+matcher = "WriteFile|EditFile"
 command = "jq -r '.tool_input.file_path' | xargs prettier --write"
 
 # 阻止修改 .env 文件
 [[hooks]]
 event = "PreToolUse"
-matcher = "WriteFile|StrReplaceFile"
+matcher = "WriteFile|EditFile"
 command = ".kimi/hooks/protect-env.sh"
 timeout = 10
 

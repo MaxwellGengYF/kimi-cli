@@ -189,7 +189,7 @@ The `Task` tool has been moved from `kimi_cli.tools.task` to `kimi_cli.tools.mul
 The `PatchFile` tool has been removed.
 
 - **Affected**: Agent configs using the `PatchFile` tool
-- **Alternative**: Use `StrReplaceFile` tool for file modifications
+- **Alternative**: Use `EditFile` tool for file modifications
 
 ## 0.52 - CLI option changes
 

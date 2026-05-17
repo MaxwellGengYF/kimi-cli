@@ -14,7 +14,7 @@ from kimi_cli.tools.file.glob import Glob
 from kimi_cli.tools.file.grep_local import Grep
 from kimi_cli.tools.file.read import ReadFile
 from kimi_cli.tools.file.read_media import ReadMediaFile
-from kimi_cli.tools.file.replace import StrReplaceFile
+from kimi_cli.tools.file.replace import EditFile
 from kimi_cli.tools.file.write import WriteFile
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.think import Think
@@ -216,9 +216,9 @@ def test_write_file_description(write_file_tool: WriteFile):
     )
 
 
-def test_str_replace_file_description(str_replace_file_tool: StrReplaceFile):
-    """Test the description of StrReplaceFile tool."""
-    assert str_replace_file_tool.base.description == snapshot(
+def test_edit_file_description(edit_file_tool: EditFile):
+    """Test the description of EditFile tool."""
+    assert edit_file_tool.base.description == snapshot(
         "Replace strings in text files.\n"
     )
 

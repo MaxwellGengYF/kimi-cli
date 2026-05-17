@@ -1,4 +1,4 @@
-"""Tests for the str_replace_file tool."""
+"""Tests for the edit_file tool."""
 
 from __future__ import annotations
 
@@ -11,20 +11,20 @@ from kosong.tooling import ToolError
 
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval, ApprovalResult
-from kimi_cli.tools.file.replace import Edit, Params, StrReplaceFile
+from kimi_cli.tools.file.replace import Edit, Params, EditFile
 from kimi_cli.wire.types import DiffDisplayBlock
 from tests.conftest import tool_call_context
 
 
 async def test_replace_single_occurrence(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test replacing a single occurrence."""
     file_path = temp_work_dir / "test.txt"
     original_content = "Hello world! This is a test."
     await file_path.write_text(original_content)
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(file_path), edit=Edit(old="world", new="universe"))
     )
 
@@ -39,14 +39,14 @@ async def test_replace_single_occurrence(
 
 
 async def test_replace_all_occurrences(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test replacing all occurrences."""
     file_path = temp_work_dir / "test.txt"
     original_content = "apple banana apple cherry apple"
     await file_path.write_text(original_content)
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(
             path=str(file_path),
             edit=Edit(old="apple", new="fruit", replace_all=True),
@@ -59,14 +59,14 @@ async def test_replace_all_occurrences(
 
 
 async def test_replace_multiple_edits(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test applying multiple edits."""
     file_path = temp_work_dir / "test.txt"
     original_content = "Hello world! Goodbye world!"
     await file_path.write_text(original_content)
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(
             path=str(file_path),
             edit=[
@@ -82,14 +82,14 @@ async def test_replace_multiple_edits(
 
 
 async def test_replace_multiline_content(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test replacing multi-line content."""
     file_path = temp_work_dir / "test.txt"
     original_content = "Line 1\nLine 2\nLine 3\n"
     await file_path.write_text(original_content)
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(
             path=str(file_path),
             edit=Edit(old="Line 2\nLine 3", new="Modified line 2\nModified line 3"),
@@ -102,14 +102,14 @@ async def test_replace_multiline_content(
 
 
 async def test_replace_unicode_content(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test replacing unicode content."""
     file_path = temp_work_dir / "test.txt"
     original_content = "Hello 世界! café"
     await file_path.write_text(original_content)
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(file_path), edit=Edit(old="世界", new="地球"))
     )
 
@@ -118,13 +118,13 @@ async def test_replace_unicode_content(
     assert await file_path.read_text() == "Hello 地球! café"
 
 
-async def test_replace_no_match(str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath):
+async def test_replace_no_match(edit_file_tool: EditFile, temp_work_dir: KaosPath):
     """Test replacing when the old string is not found."""
     file_path = temp_work_dir / "test.txt"
     original_content = "Hello world!"
     await file_path.write_text(original_content)
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(file_path), edit=Edit(old="notfound", new="replacement"))
     )
 
@@ -134,7 +134,7 @@ async def test_replace_no_match(str_replace_file_tool: StrReplaceFile, temp_work
 
 
 async def test_replace_with_relative_path(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test replacing with a relative path inside the work directory."""
     relative_dir = temp_work_dir / "relative" / "path"
@@ -142,7 +142,7 @@ async def test_replace_with_relative_path(
     file_path = relative_dir / "file.txt"
     await file_path.write_text("old content")
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path="relative/path/file.txt", edit=Edit(old="old", new="new"))
     )
 
@@ -151,12 +151,12 @@ async def test_replace_with_relative_path(
 
 
 async def test_replace_outside_work_directory(
-    str_replace_file_tool: StrReplaceFile, outside_file: Path
+    edit_file_tool: EditFile, outside_file: Path
 ):
     """Test replacing outside the working directory with an absolute path."""
     outside_file.write_text("old content", encoding="utf-8")
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(outside_file), edit=Edit(old="old", new="new"))
     )
 
@@ -165,7 +165,7 @@ async def test_replace_outside_work_directory(
 
 
 async def test_replace_outside_work_directory_with_prefix(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Paths sharing the work dir prefix but outside should still be editable
     with absolute paths."""
@@ -175,7 +175,7 @@ async def test_replace_outside_work_directory_with_prefix(
     sneaky_file = sneaky_dir / "test.txt"
     sneaky_file.write_text("content", encoding="utf-8")
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(sneaky_file), edit=Edit(old="content", new="new"))
     )
 
@@ -184,12 +184,12 @@ async def test_replace_outside_work_directory_with_prefix(
 
 
 async def test_replace_nonexistent_file(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test replacing in a non-existent file."""
     file_path = temp_work_dir / "nonexistent.txt"
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(file_path), edit=Edit(old="old", new="new"))
     )
 
@@ -198,13 +198,13 @@ async def test_replace_nonexistent_file(
 
 
 async def test_replace_directory_instead_of_file(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test replacing in a directory instead of a file."""
     dir_path = temp_work_dir / "directory"
     await dir_path.mkdir()
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(dir_path), edit=Edit(old="old", new="new"))
     )
 
@@ -213,14 +213,14 @@ async def test_replace_directory_instead_of_file(
 
 
 async def test_replace_mixed_multiple_edits(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test multiple edits with different replace_all settings."""
     file_path = temp_work_dir / "test.txt"
     original_content = "apple apple banana apple cherry"
     await file_path.write_text(original_content)
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(
             path=str(file_path),
             edit=[
@@ -238,14 +238,14 @@ async def test_replace_mixed_multiple_edits(
 
 
 async def test_replace_empty_strings(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test replacing with empty strings."""
     file_path = temp_work_dir / "test.txt"
     original_content = "Hello world!"
     await file_path.write_text(original_content)
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(file_path), edit=Edit(old="world", new=""))
     )
 
@@ -257,9 +257,9 @@ async def test_replace_empty_strings(
 # --- Comprehensive edge-case tests ---
 
 
-async def test_replace_empty_path(str_replace_file_tool: StrReplaceFile):
+async def test_replace_empty_path(edit_file_tool: EditFile):
     """Test replacing with an empty path."""
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path="", edit=Edit(old="old", new="new"))
     )
     assert result.is_error
@@ -267,10 +267,10 @@ async def test_replace_empty_path(str_replace_file_tool: StrReplaceFile):
 
 
 async def test_replace_relative_path_outside_workspace(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test replacing with a relative path that resolves outside the workspace."""
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path="../outside.txt", edit=Edit(old="old", new="new"))
     )
     assert result.is_error
@@ -286,8 +286,8 @@ async def test_replace_approval_rejected(runtime: Runtime, temp_work_dir: KaosPa
     request_mock = AsyncMock(return_value=ApprovalResult(approved=False))
     approval.request = cast(Any, request_mock)
 
-    with tool_call_context("StrReplaceFile"):
-        tool = StrReplaceFile(runtime, approval)
+    with tool_call_context("EditFile"):
+        tool = EditFile(runtime, approval)
         result = await tool(
             Params(path=str(file_path), edit=Edit(old="old", new="new"))
         )
@@ -297,12 +297,12 @@ async def test_replace_approval_rejected(runtime: Runtime, temp_work_dir: KaosPa
     request_mock.assert_awaited_once()
 
 
-async def test_replace_invalid_json(str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath):
+async def test_replace_invalid_json(edit_file_tool: EditFile, temp_work_dir: KaosPath):
     """Test editing a JSON file to make it invalid returns a format error."""
     file_path = temp_work_dir / "test.json"
     await file_path.write_text('{"key": "value"}')
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(
             path=str(file_path),
             edit=Edit(old='"key": "value"', new='"key": broken'),
@@ -315,12 +315,12 @@ async def test_replace_invalid_json(str_replace_file_tool: StrReplaceFile, temp_
     assert await file_path.read_text() == '{"key": broken}'
 
 
-async def test_replace_valid_json(str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath):
+async def test_replace_valid_json(edit_file_tool: EditFile, temp_work_dir: KaosPath):
     """Test editing a JSON file with valid JSON succeeds without format error."""
     file_path = temp_work_dir / "test.json"
     await file_path.write_text('{"key": "old"}')
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(
             path=str(file_path),
             edit=Edit(old='"old"', new='"new"'),
@@ -332,12 +332,12 @@ async def test_replace_valid_json(str_replace_file_tool: StrReplaceFile, temp_wo
     assert await file_path.read_text() == '{"key": "new"}'
 
 
-async def test_replace_invalid_xml(str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath):
+async def test_replace_invalid_xml(edit_file_tool: EditFile, temp_work_dir: KaosPath):
     """Test editing an XML file to make it invalid returns a format error."""
     file_path = temp_work_dir / "test.xml"
     await file_path.write_text("<root>old</root>")
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(
             path=str(file_path),
             edit=Edit(old="old", new="<broken"),
@@ -350,12 +350,12 @@ async def test_replace_invalid_xml(str_replace_file_tool: StrReplaceFile, temp_w
     assert await file_path.read_text() == "<root><broken</root>"
 
 
-async def test_replace_valid_xml(str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath):
+async def test_replace_valid_xml(edit_file_tool: EditFile, temp_work_dir: KaosPath):
     """Test editing an XML file with valid XML succeeds without format error."""
     file_path = temp_work_dir / "test.xml"
     await file_path.write_text("<root>old</root>")
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(
             path=str(file_path),
             edit=Edit(old="old", new="new"),
@@ -367,12 +367,12 @@ async def test_replace_valid_xml(str_replace_file_tool: StrReplaceFile, temp_wor
     assert await file_path.read_text() == "<root>new</root>"
 
 
-async def test_replace_edit_empty_old(str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath):
+async def test_replace_edit_empty_old(edit_file_tool: EditFile, temp_work_dir: KaosPath):
     """Test that an edit with an empty old string results in no replacements."""
     file_path = temp_work_dir / "test.txt"
     await file_path.write_text("Hello world!")
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(file_path), edit=Edit(old="", new="X"))
     )
 
@@ -381,13 +381,13 @@ async def test_replace_edit_empty_old(str_replace_file_tool: StrReplaceFile, tem
 
 
 async def test_replace_edit_old_equals_new(
-    str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
 ):
     """Test that an edit where old equals new results in no replacements."""
     file_path = temp_work_dir / "test.txt"
     await file_path.write_text("Hello world!")
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(file_path), edit=Edit(old="world", new="world"))
     )
 
@@ -395,12 +395,12 @@ async def test_replace_edit_old_equals_new(
     assert "No replacements were made" in result.message
 
 
-async def test_replace_all_no_match(str_replace_file_tool: StrReplaceFile, temp_work_dir: KaosPath):
+async def test_replace_all_no_match(edit_file_tool: EditFile, temp_work_dir: KaosPath):
     """Test replace_all when the old string is not found."""
     file_path = temp_work_dir / "test.txt"
     await file_path.write_text("Hello world!")
 
-    result = await str_replace_file_tool(
+    result = await edit_file_tool(
         Params(path=str(file_path), edit=Edit(old="notfound", new="X", replace_all=True))
     )
 
@@ -410,8 +410,8 @@ async def test_replace_all_no_match(str_replace_file_tool: StrReplaceFile, temp_
 
 async def test_replace_bind_plan_mode(runtime: Runtime, temp_work_dir: KaosPath):
     """Test bind_plan_mode sets the checker and getter correctly."""
-    with tool_call_context("StrReplaceFile"):
-        tool = StrReplaceFile(runtime, Approval(yolo=True))
+    with tool_call_context("EditFile"):
+        tool = EditFile(runtime, Approval(yolo=True))
         checker = lambda: False
         getter = lambda: None
         tool.bind_plan_mode(checker, getter)
@@ -424,8 +424,8 @@ async def test_replace_oserror_on_write(runtime: Runtime, temp_work_dir: KaosPat
     file_path = temp_work_dir / "test.txt"
     await file_path.write_text("old content")
 
-    with tool_call_context("StrReplaceFile"):
-        tool = StrReplaceFile(runtime, Approval(yolo=True))
+    with tool_call_context("EditFile"):
+        tool = EditFile(runtime, Approval(yolo=True))
         with patch("kaos.path.KaosPath.write_text", side_effect=OSError("disk full")):
             result = await tool(
                 Params(path=str(file_path), edit=Edit(old="old", new="new"))
@@ -441,8 +441,8 @@ async def test_replace_memory_error_propagated(runtime: Runtime, temp_work_dir: 
     file_path = temp_work_dir / "test.txt"
     await file_path.write_text("old content")
 
-    with tool_call_context("StrReplaceFile"):
-        tool = StrReplaceFile(runtime, Approval(yolo=True))
+    with tool_call_context("EditFile"):
+        tool = EditFile(runtime, Approval(yolo=True))
         with patch(
             "kaos.path.KaosPath.read_text", side_effect=MemoryError("out of memory")
         ):
@@ -457,7 +457,7 @@ async def test_replace_memory_error_propagated(runtime: Runtime, temp_work_dir: 
 
 def test_apply_edit_single_replacement():
     """Test _apply_edit with a single replacement."""
-    tool = object.__new__(StrReplaceFile)
+    tool = object.__new__(EditFile)
     content, count = tool._apply_edit("hello world", Edit(old="world", new="universe"))
     assert content == "hello universe"
     assert count == 1
@@ -465,7 +465,7 @@ def test_apply_edit_single_replacement():
 
 def test_apply_edit_replace_all():
     """Test _apply_edit with replace_all."""
-    tool = object.__new__(StrReplaceFile)
+    tool = object.__new__(EditFile)
     content, count = tool._apply_edit(
         "a b a c a", Edit(old="a", new="X", replace_all=True)
     )
@@ -475,7 +475,7 @@ def test_apply_edit_replace_all():
 
 def test_apply_edit_empty_old():
     """Test _apply_edit with empty old string returns no changes."""
-    tool = object.__new__(StrReplaceFile)
+    tool = object.__new__(EditFile)
     content, count = tool._apply_edit("hello", Edit(old="", new="X"))
     assert content == "hello"
     assert count == 0
@@ -483,7 +483,7 @@ def test_apply_edit_empty_old():
 
 def test_apply_edit_old_equals_new():
     """Test _apply_edit when old equals new returns no changes."""
-    tool = object.__new__(StrReplaceFile)
+    tool = object.__new__(EditFile)
     content, count = tool._apply_edit("hello", Edit(old="hello", new="hello"))
     assert content == "hello"
     assert count == 0
@@ -491,7 +491,7 @@ def test_apply_edit_old_equals_new():
 
 def test_apply_edit_no_match():
     """Test _apply_edit when old string is not found."""
-    tool = object.__new__(StrReplaceFile)
+    tool = object.__new__(EditFile)
     content, count = tool._apply_edit("hello", Edit(old="xyz", new="abc"))
     assert content == "hello"
     assert count == 0
@@ -499,7 +499,7 @@ def test_apply_edit_no_match():
 
 def test_apply_edit_replace_all_no_match():
     """Test _apply_edit with replace_all when old string is not found."""
-    tool = object.__new__(StrReplaceFile)
+    tool = object.__new__(EditFile)
     content, count = tool._apply_edit("hello", Edit(old="xyz", new="abc", replace_all=True))
     assert content == "hello"
     assert count == 0

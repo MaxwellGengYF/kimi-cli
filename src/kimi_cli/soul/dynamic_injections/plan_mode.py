@@ -130,13 +130,13 @@ def _full_reminder(
         if plan_exists:
             lines.append(
                 f"Plan file: {plan_file_path} "
-                "(exists — read first, then update it with WriteFile or StrReplaceFile)"
+                "(exists — read first, then update it with WriteFile or EditFile)"
             )
         else:
             lines.append(
                 f"Plan file: {plan_file_path} "
                 "(create it with WriteFile; once it exists, you can modify it with "
-                "WriteFile or StrReplaceFile)"
+                "WriteFile or EditFile)"
             )
         lines.append("This is the only file you are allowed to edit.")
     # Workflow
@@ -148,7 +148,7 @@ def _full_reminder(
             "2. Design — converge on the best approach; "
             "consider trade-offs but aim for a single recommendation",
             "3. Review — re-read key files to verify understanding",
-            "4. Write Plan — modify the plan file with WriteFile or StrReplaceFile. "
+            "4. Write Plan — modify the plan file with WriteFile or EditFile. "
             "Use WriteFile if the plan file does not exist yet",
             "5. Exit — call ExitPlanMode for user approval",
         ]
@@ -194,7 +194,7 @@ def _sparse_reminder(plan_file_path: str | None = None) -> str:
     else:
         parts.append("Read-only.")
     parts.append(
-        "Use WriteFile or StrReplaceFile to modify the plan file. "
+        "Use WriteFile or EditFile to modify the plan file. "
         "If it does not exist yet, create it with WriteFile first."
     )
     parts.extend(
@@ -229,7 +229,7 @@ def _reentry_reminder(plan_file_path: str | None = None) -> str:
         "2. Evaluate the user's current request against that plan",
         "3. If different task: replace the old plan with a fresh one. "
         "If same task: update the existing plan.",
-        "4. You may use WriteFile or StrReplaceFile to modify the plan file. "
+        "4. You may use WriteFile or EditFile to modify the plan file. "
         "If the file does not exist yet, create it with WriteFile first.",
     ]
     lines.extend(

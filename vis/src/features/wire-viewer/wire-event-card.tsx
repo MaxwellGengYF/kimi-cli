@@ -175,7 +175,7 @@ function getSummary(event: WireEvent): string {
           if (args.line_offset || args.n_lines) detail += ` [${args.line_offset ?? 1}:${(args.n_lines as number) ?? ""}]`;
         } else if (name === "WriteFile") {
           detail = ` ${args.path}`;
-        } else if (name === "StrReplaceFile") {
+        } else if (name === "EditFile") {
           detail = ` ${args.path}`;
         } else if (name === "Shell") {
           const cmd = String(args.command ?? "");

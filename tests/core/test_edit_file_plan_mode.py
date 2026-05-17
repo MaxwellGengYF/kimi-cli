@@ -1,4 +1,4 @@
-"""Tests for StrReplaceFile plan mode integration."""
+"""Tests for EditFile plan mode integration."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ from kosong.tooling import ToolError, ToolReturnValue
 
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
-from kimi_cli.tools.file.replace import Edit, Params, StrReplaceFile
+from kimi_cli.tools.file.replace import Edit, Params, EditFile
 from tests.conftest import tool_call_context
 
 
-class TestStrReplaceFilePlanMode:
+class TestEditFilePlanMode:
     async def test_plan_file_auto_approved(
         self, runtime: Runtime, temp_work_dir: KaosPath, tmp_path: Path
     ) -> None:
@@ -25,8 +25,8 @@ class TestStrReplaceFilePlanMode:
         plan_path.parent.mkdir(parents=True, exist_ok=True)
         plan_path.write_text("# Plan\n- old", encoding="utf-8")
 
-        with tool_call_context("StrReplaceFile"):
-            tool = StrReplaceFile(runtime, approval)
+        with tool_call_context("EditFile"):
+            tool = EditFile(runtime, approval)
             tool.bind_plan_mode(
                 checker=lambda: True,
                 path_getter=lambda: plan_path,
@@ -56,8 +56,8 @@ class TestStrReplaceFilePlanMode:
         await target.write_text("old")
         plan_path = Path(str(temp_work_dir)) / "plans" / "plan.md"
 
-        with tool_call_context("StrReplaceFile"):
-            tool = StrReplaceFile(runtime, approval)
+        with tool_call_context("EditFile"):
+            tool = EditFile(runtime, approval)
             tool.bind_plan_mode(
                 checker=lambda: True,
                 path_getter=lambda: plan_path,
@@ -85,8 +85,8 @@ class TestStrReplaceFilePlanMode:
         target = temp_work_dir / "normal.txt"
         await target.write_text("old content")
 
-        with tool_call_context("StrReplaceFile"):
-            tool = StrReplaceFile(runtime, approval)
+        with tool_call_context("EditFile"):
+            tool = EditFile(runtime, approval)
             result = await tool(
                 Params(
                     path=str(target),
@@ -103,8 +103,8 @@ class TestStrReplaceFilePlanMode:
         approval = Approval(yolo=False)
         plan_path = tmp_path / "plans" / "missing-plan.md"
 
-        with tool_call_context("StrReplaceFile"):
-            tool = StrReplaceFile(runtime, approval)
+        with tool_call_context("EditFile"):
+            tool = EditFile(runtime, approval)
             tool.bind_plan_mode(
                 checker=lambda: True,
                 path_getter=lambda: plan_path,

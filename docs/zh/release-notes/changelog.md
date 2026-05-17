@@ -22,7 +22,7 @@
 
 - Shell：把 Windows 上的 Shell 后端从 PowerShell 切换到 Git Bash——Shell 工具现在通过 `bash.exe`（POSIX 语义）执行命令，而不再使用 `powershell.exe`。Windows 用户能使用与 Linux/macOS 一致的 Unix 风格语法（`&&`、`||`、`|`、`/dev/null`、`grep`、`sed` 等）。**需要先安装 Git for Windows**：kimi-cli 按以下顺序查找 `bash.exe`：环境变量 `KIMI_CLI_GIT_BASH_PATH` → `where.exe git` → 标准安装路径（`C:\Program Files\Git\bin\bash.exe`）；如果都找不到，启动时打印安装提示并退出
 - Shell：防御 Windows 上模型偶尔幻觉出的 CMD 风格 `2>nul` 重定向——在命令进入 git-bash 前自动改写为 `2>/dev/null`；如果不防御，git-bash 会真的创建一个名为 `nul` 的文件（Windows 保留设备名），破坏 `git add .` 和 `git clone`。该改写仅在 Windows 上生效；Linux/macOS 上 `>nul` 是合法的写入到名为 `nul` 文件的重定向，保持原样
-- File：`ReadFile`、`WriteFile`、`StrReplaceFile`、`Glob`、`Grep` 在 Windows 上接受 POSIX 形式的路径——除原生 Windows 路径外，这些工具现在能识别 `/c/Users/foo`（Git Bash 形式）、`/cygdrive/c/Users/foo`（Cygwin 形式）和 `\\server\share`（UNC 形式），并在文件系统操作前自动转换为原生形式
+- File：`ReadFile`、`WriteFile`、`EditFile`、`Glob`、`Grep` 在 Windows 上接受 POSIX 形式的路径——除原生 Windows 路径外，这些工具现在能识别 `/c/Users/foo`（Git Bash 形式）、`/cygdrive/c/Users/foo`（Cygwin 形式）和 `\\server\share`（UNC 形式），并在文件系统操作前自动转换为原生形式
 - Shell：在 LLM 步骤重试时清除已流式输出的不完整内容——以前，如果某个步骤在流式输出中途失败（例如触发速率限制或服务器错误），被中断尝试所产生的未完成文本和未结束的工具调用块会留在屏幕上，并与新尝试的输出混在一起。现在 Shell 界面会丢弃这部分不完整状态，并打印一条重试横幅，显示失败原因、尝试次数和等待时间；Print 模式也会在重试时丢弃已缓冲的 Assistant 消息
 - Wire：协议版本升级到 1.10——新增 `StepRetry` 事件，在步骤尝试失败并即将重试时发出，携带尝试次数、等待时间和错误详情
 - Core：不再向子代理注入 plan 模式和 afk 模式的工作流 prompt——子代理会共享会话级模式状态以支持持久化和恢复，但其 YAML 通常不包含 `EnterPlanMode`、`ExitPlanMode`、`AskUserQuestion` 等 root 工作流工具。现在这些 prompt injection 只注入给 root agent。Plan 模式下工具层的只读检查保持不变，行为兼容性不受影响
@@ -264,7 +264,7 @@
 - Shell：提高长文本粘贴自动折叠阈值至 1000 字符或 15 行（之前为 300 字符或 3 行），改善语音/无键盘输入等场景下的体验
 - Core：Plan 模式现在支持多选方案——当 Agent 的计划包含多个不同路径时，`ExitPlanMode` 可展示 2–3 个带标签的选项供用户选择执行哪一个方案；用户选择的方案会作为选定路径返回给 Agent
 - Core：跨进程重启持久化 Plan 会话 ID 和文件路径——Plan 会话标识符和文件 slug 保存到 `SessionState`，重启 Kimi Code 后会继续使用 `~/.kimi/plans/` 下的同一计划文件，而非创建新文件
-- Core：Plan 模式现在支持增量编辑计划文件——Agent 可以使用 `StrReplaceFile` 精准更新计划文件的特定部分，而无需通过 `WriteFile` 重写整个文件；同时非计划文件的编辑现在会被直接阻止，而非弹出审批请求
+- Core：Plan 模式现在支持增量编辑计划文件——Agent 可以使用 `EditFile` 精准更新计划文件的特定部分，而无需通过 `WriteFile` 重写整个文件；同时非计划文件的编辑现在会被直接阻止，而非弹出审批请求
 - Core：延迟 MCP 启动并展示加载进度——MCP 服务器现在在 Shell UI 启动后异步初始化，并提供实时进度指示器显示连接状态；Shell 在状态区域显示连接中和就绪状态，Web 显示服务器连接状态
 - Core：优化轻量级启动路径——对 CLI 子命令和版本元数据实现延迟加载，显著缩短 `--version` 和 `--help` 等常用命令的启动时间
 - Build：修复 Nix `FileCollisionError` for `bin/kimi`——从 `kimi-code` 包中移除重复的入口点，使 `kimi-cli` 独占 `bin/kimi`
@@ -545,7 +545,7 @@
 
 ## 0.82 (2026-01-21)
 
-- Tool：`WriteFile` 和 `StrReplaceFile` 工具支持使用绝对路径编辑/写入工作目录外的文件
+- Tool：`WriteFile` 和 `EditFile` 工具支持使用绝对路径编辑/写入工作目录外的文件
 - Tool：使用 Kimi 供应商时，视频文件上传到 Kimi Files API，使用 `ms://` 引用替代 inline data URL
 - Config：添加 `reserved_context_size` 配置项，自定义自动压缩触发阈值（默认 50000 tokens）
 
@@ -653,7 +653,7 @@
 
 - CLI：添加 `--config` 和 `--config-file` 选项，支持传入 JSON/TOML 配置
 - Core：`KimiCLI.create` 的 `config` 参数现在除了 `Path` 也支持 `Config` 类型
-- Tool：在 `WriteFile` 和 `StrReplaceFile` 的审批/结果中包含 diff 显示块
+- Tool：在 `WriteFile` 和 `EditFile` 的审批/结果中包含 diff 显示块
 - Wire：在审批请求中添加显示块（包括 diff），保持向后兼容
 - ACP：在工具结果和审批提示中显示文件 diff 预览
 - ACP：连接 ACP 客户端管理的 MCP 服务器
@@ -1066,7 +1066,7 @@
 
 ## 0.14.0 (2025-09-25)
 
-- 添加 `StrReplaceFile` 工具
+- 添加 `EditFile` 工具
 
 - 强调使用与用户相同的语言
 

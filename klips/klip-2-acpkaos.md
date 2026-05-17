@@ -21,7 +21,7 @@ Build ACPKaos as a near-drop-in LocalKaos variant. It behaves like LocalKaos for
 
 * Use ACP only for methods the client explicitly advertises: `fs/read_text_file`, `fs/write_text_file`, and `terminal/*`. See [ACP initialization](https://agentclientprotocol.com/protocol/initialization), [ACP file system](https://agentclientprotocol.com/protocol/file-system), and [ACP terminals](https://agentclientprotocol.com/protocol/terminals).
 * All other operations should pass through to LocalKaos.
-* Keep behavior of existing tools (`Shell`, `ReadFile`, `WriteFile`, `StrReplaceFile`) unchanged.
+* Keep behavior of existing tools (`Shell`, `ReadFile`, `WriteFile`, `EditFile`) unchanged.
 * Capability flags are independent: `readTextFile` and `writeTextFile` may be enabled separately. The implementation must not call unsupported ACP methods.
 
 ## Current baseline (no new behavior assumed)
@@ -30,7 +30,7 @@ Build ACPKaos as a near-drop-in LocalKaos variant. It behaves like LocalKaos for
 * Tools call KAOS:
   * `Shell` -> `kaos.exec`.
   * `ReadFile` -> `KaosPath.exists/is_file/read_lines`.
-  * `WriteFile` / `StrReplaceFile` -> `KaosPath.read_text/write_text/append_text`.
+  * `WriteFile` / `EditFile` -> `KaosPath.read_text/write_text/append_text`.
 * ACP integration today is tool-level (terminal replacement); an ACP-backed file tool swap has been experimented with locally but is not merged.
 
 ## Design: ACPKaos in one page
@@ -124,6 +124,6 @@ ACPProcess (implements KaosProcess) {
   * read/write calls hit ACP when caps allow.
   * append uses read + write.
   * exec returns output and exit codes.
-* Integration tests: run `Shell`, `ReadFile`, `WriteFile`, `StrReplaceFile` with ACPKaos active.
+* Integration tests: run `Shell`, `ReadFile`, `WriteFile`, `EditFile` with ACPKaos active.
 * Manual test in Zed: read unsaved buffer, write changes, run command and confirm UI updates.
 * Tests will need a mocked ACP client; we can mirror patterns from the ACP Python SDK tests when implementing.

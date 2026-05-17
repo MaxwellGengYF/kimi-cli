@@ -39,7 +39,7 @@ Always use tools to implement your code changes:
 
 - Use `WriteFile` to create or overwrite source files. Code that only appears in your text response is NOT saved to the file system and will not take effect.
 - Use `Shell` to run and test your code after writing it.
-- Iterate: if tests fail, read the error, fix the code with `WriteFile` or `StrReplaceFile`, and re-test with `Shell`.
+- Iterate: if tests fail, read the error, fix the code with `WriteFile` or `EditFile`, and re-test with `Shell`.
 
 When working on an existing codebase, you should:
 

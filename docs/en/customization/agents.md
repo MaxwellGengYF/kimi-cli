@@ -14,7 +14,7 @@ kimi --agent okabe
 
 The default agent, suitable for general use. Enabled tools:
 
-`Agent`, `AskUserQuestion`, `SetTodoList`, `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `WriteFile`, `StrReplaceFile`, `SearchWeb`, `FetchURL`, `EnterPlanMode`, `ExitPlanMode`, `TaskList`, `TaskOutput`, `TaskStop`
+`Agent`, `AskUserQuestion`, `SetTodoList`, `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `WriteFile`, `EditFile`, `SearchWeb`, `FetchURL`, `EnterPlanMode`, `ExitPlanMode`, `TaskList`, `TaskOutput`, `TaskStop`
 
 ### `okabe`
 
@@ -139,7 +139,7 @@ The default agent configuration includes three built-in subagent types, each wit
 
 | Type | Purpose | Available tools |
 |------|---------|----------------|
-| `coder` | General software engineering: read/write files, run commands, search code | `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `WriteFile`, `StrReplaceFile`, `SearchWeb`, `FetchURL` |
+| `coder` | General software engineering: read/write files, run commands, search code | `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `WriteFile`, `EditFile`, `SearchWeb`, `FetchURL` |
 | `explore` | Fast read-only codebase exploration: search, read, summarize | `Shell`, `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `SearchWeb`, `FetchURL` (no write tools) |
 | `plan` | Implementation planning and architecture design: analyze files, create plans | `ReadFile`, `ReadMediaFile`, `Glob`, `Grep`, `SearchWeb`, `FetchURL` (no Shell, no write tools) |
 
@@ -277,9 +277,9 @@ When `run_in_background=true`, the command is launched as a background task and 
 | `content` | string | File content |
 | `mode` | string | `overwrite` (default) or `append` |
 
-### `StrReplaceFile`
+### `EditFile`
 
-- **Path**: `kimi_cli.tools.file:StrReplaceFile`
+- **Path**: `kimi_cli.tools.file:EditFile`
 - **Description**: Edit files using string replacement. Requires user approval. Absolute paths are required when editing files outside the working directory.
 
 | Parameter | Type | Description |

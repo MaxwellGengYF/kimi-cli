@@ -39,8 +39,8 @@ class Params(BaseModel):
     )
 
 
-class StrReplaceFile(CallableTool2[Params]):
-    name: str = "StrReplaceFile"
+class EditFile(CallableTool2[Params]):
+    name: str = "EditFile"
     description: str = _BASE_DESCRIPTION
     params: type[Params] = Params
 
@@ -139,7 +139,7 @@ class StrReplaceFile(CallableTool2[Params]):
                     return ToolError(
                         message=(
                             "The current plan file does not exist yet. "
-                            "Use WriteFile to create it before calling StrReplaceFile."
+                            "Use WriteFile to create it before calling EditFile."
                         ),
                         brief="Plan file not created",
                     )
@@ -226,7 +226,7 @@ class StrReplaceFile(CallableTool2[Params]):
             )
 
         except (OSError, ValueError, RuntimeError) as e:
-            logger.warning("StrReplaceFile failed: {path}: {error}", path=params.path, error=e)
+            logger.warning("EditFile failed: {path}: {error}", path=params.path, error=e)
             return ToolError(
                 message=f"Failed to edit. Error: {e}",
                 brief="Failed to edit file",

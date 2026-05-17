@@ -275,7 +275,7 @@ class TestFileToolLogging:
             assert result.is_error
             mock_logger.warning.assert_called_once()
 
-    async def test_replace_file_exception_logged(self, str_replace_file_tool):
+    async def test_replace_file_exception_logged(self, edit_file_tool):
         from kimi_cli.tools.file.replace import Edit, Params
 
         with (
@@ -283,7 +283,7 @@ class TestFileToolLogging:
             patch("kimi_cli.tools.file.replace.kaos_path_from_user_input") as mock_path,
         ):
             mock_path.side_effect = RuntimeError("Unexpected")
-            result = await str_replace_file_tool(
+            result = await edit_file_tool(
                 Params(path="/some/file", edit=Edit(old="a", new="b"))
             )
             assert result.is_error

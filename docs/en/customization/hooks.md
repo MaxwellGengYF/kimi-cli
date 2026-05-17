@@ -46,13 +46,13 @@ Define hooks in `~/.kimi/config.toml` using the `[[hooks]]` array syntax:
 # Auto-format after file edits
 [[hooks]]
 event = "PostToolUse"
-matcher = "WriteFile|StrReplaceFile"
+matcher = "WriteFile|EditFile"
 command = "jq -r '.tool_input.file_path' | xargs prettier --write"
 
 # Block edits to .env files
 [[hooks]]
 event = "PreToolUse"
-matcher = "WriteFile|StrReplaceFile"
+matcher = "WriteFile|EditFile"
 command = ".kimi/hooks/protect-env.sh"
 timeout = 10
 

@@ -342,10 +342,10 @@ class KimiSoul:
         if isinstance(write_tool, WriteFile):
             write_tool.bind_plan_mode(checker, path_getter)
 
-        from kimi_cli.tools.file.replace import StrReplaceFile
+        from kimi_cli.tools.file.replace import EditFile
 
-        replace_tool = self._agent.toolset.find("StrReplaceFile")
-        if isinstance(replace_tool, StrReplaceFile):
+        replace_tool = self._agent.toolset.find("EditFile")
+        if isinstance(replace_tool, EditFile):
             replace_tool.bind_plan_mode(checker, path_getter)
 
         write_line_tool = self._agent.toolset.find("WriteLine")

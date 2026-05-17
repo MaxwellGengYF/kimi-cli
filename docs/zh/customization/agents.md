@@ -14,7 +14,7 @@ kimi --agent okabe
 
 默认 Agent，适合通常情况使用。启用的工具：
 
-`Agent`、`AskUserQuestion`、`SetTodoList`、`Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL`、`EnterPlanMode`、`ExitPlanMode`、`TaskList`、`TaskOutput`、`TaskStop`
+`Agent`、`AskUserQuestion`、`SetTodoList`、`Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`EditFile`、`SearchWeb`、`FetchURL`、`EnterPlanMode`、`ExitPlanMode`、`TaskList`、`TaskOutput`、`TaskStop`
 
 ### `okabe`
 
@@ -139,7 +139,7 @@ agent:
 
 | 类型 | 用途 | 可用工具 |
 |------|------|---------|
-| `coder` | 通用软件工程：读写文件、运行命令、搜索代码 | `Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`StrReplaceFile`、`SearchWeb`、`FetchURL` |
+| `coder` | 通用软件工程：读写文件、运行命令、搜索代码 | `Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`WriteFile`、`EditFile`、`SearchWeb`、`FetchURL` |
 | `explore` | 快速只读代码探索：搜索、阅读、总结 | `Shell`、`ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`SearchWeb`、`FetchURL`（无写入工具） |
 | `plan` | 实现规划与架构设计：分析文件、制定方案 | `ReadFile`、`ReadMediaFile`、`Glob`、`Grep`、`SearchWeb`、`FetchURL`（无 Shell、无写入工具） |
 
@@ -277,9 +277,9 @@ agent:
 | `content` | string | 文件内容 |
 | `mode` | string | `overwrite`（默认）或 `append` |
 
-### `StrReplaceFile`
+### `EditFile`
 
-- **路径**：`kimi_cli.tools.file:StrReplaceFile`
+- **路径**：`kimi_cli.tools.file:EditFile`
 - **描述**：使用字符串替换编辑文件。编辑操作需要用户审批。编辑工作目录外文件时，必须使用绝对路径。
 
 | 参数 | 类型 | 说明 |
