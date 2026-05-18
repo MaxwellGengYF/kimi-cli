@@ -417,6 +417,24 @@ class Anthropic:
             kwargs["output_config"] = output_config
         return self.with_generation_kwargs(**kwargs)
 
+    def with_parallel_tool_calls(self, enabled: bool = True) -> Self:
+        """Control whether the model may call multiple tools in parallel.
+
+        Args:
+            enabled: When ``True`` (the default), the model may emit multiple
+                tool_use blocks in a single turn. When ``False``, the model is
+                restricted to at most one tool call per turn.
+        """
+        new_self = self.with_generation_kwargs()
+        if enabled:
+            new_self._generation_kwargs.pop("tool_choice", None)
+        else:
+            new_self._generation_kwargs["tool_choice"] = {
+                "type": "auto",
+                "disable_parallel_tool_use": True,
+            }
+        return new_self
+
     def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:
         """
         Copy the chat provider, updating the generation kwargs with the given values.

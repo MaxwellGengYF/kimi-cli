@@ -451,6 +451,36 @@ async def test_openai_responses_with_thinking_xhigh():
         assert body["reasoning"] == snapshot({"effort": "xhigh", "summary": "auto"})
 
 
+async def test_openai_responses_with_parallel_tool_calls_disabled():
+    """with_parallel_tool_calls(False) should cap max_tool_calls at 1."""
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/responses").mock(return_value=Response(200, json=make_response()))
+        provider = OpenAIResponses(
+            model="gpt-4.1", api_key="test-key", stream=False
+        ).with_parallel_tool_calls(False)
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["max_tool_calls"] == 1
+
+
+async def test_openai_responses_with_parallel_tool_calls_enabled():
+    """with_parallel_tool_calls(True) should omit max_tool_calls."""
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/responses").mock(return_value=Response(200, json=make_response()))
+        provider = (
+            OpenAIResponses(model="gpt-4.1", api_key="test-key", stream=False)
+            .with_parallel_tool_calls(False)
+            .with_parallel_tool_calls(True)
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "max_tool_calls" not in body
+
+
 async def test_openai_responses_with_thinking_max_clamps_to_xhigh():
     """Kosong's "max" is Anthropic-specific; for OpenAI it clamps to xhigh
     (their highest level) rather than falling back to high."""

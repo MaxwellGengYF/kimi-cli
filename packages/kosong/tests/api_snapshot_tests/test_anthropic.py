@@ -1064,3 +1064,66 @@ async def test_anthropic_malformed_tool_use_in_response(
 
         assert isinstance(parts[0], TextPartClass)
         assert expected_content in parts[0].text
+
+
+async def test_anthropic_with_parallel_tool_calls_disabled():
+    """with_parallel_tool_calls(False) should emit disable_parallel_tool_use."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = Anthropic(
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            default_max_tokens=1024,
+            stream=False,
+        ).with_parallel_tool_calls(False)
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["tool_choice"] == snapshot(
+            {"type": "auto", "disable_parallel_tool_use": True}
+        )
+
+
+async def test_anthropic_with_parallel_tool_calls_enabled():
+    """with_parallel_tool_calls(True) should omit disable_parallel_tool_use."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = (
+            Anthropic(
+                model="claude-sonnet-4-20250514",
+                api_key="test-key",
+                default_max_tokens=1024,
+                stream=False,
+            )
+            .with_parallel_tool_calls(False)
+            .with_parallel_tool_calls(True)
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "tool_choice" not in body
+
+
+async def test_anthropic_parallel_tool_calls_last_call_wins():
+    """with_parallel_tool_calls overrides a prior user-supplied tool_choice."""
+    with respx.mock(base_url="https://api.anthropic.com") as mock:
+        mock.post("/v1/messages").mock(return_value=Response(200, json=make_anthropic_response()))
+        provider = (
+            Anthropic(
+                model="claude-sonnet-4-20250514",
+                api_key="test-key",
+                default_max_tokens=1024,
+                stream=False,
+            )
+            .with_generation_kwargs(tool_choice={"type": "any"})
+            .with_parallel_tool_calls(False)
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["tool_choice"] == snapshot(
+            {"type": "auto", "disable_parallel_tool_use": True}
+        )

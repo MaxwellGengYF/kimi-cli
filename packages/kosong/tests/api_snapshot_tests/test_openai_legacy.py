@@ -367,6 +367,40 @@ async def test_openai_legacy_no_auto_reasoning_effort_without_think_part():
         assert "reasoning_effort" not in body
 
 
+async def test_openai_legacy_with_parallel_tool_calls_disabled():
+    """with_parallel_tool_calls(False) should send parallel_tool_calls=false."""
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = OpenAILegacy(
+            model="gpt-4.1", api_key="test-key", stream=False
+        ).with_parallel_tool_calls(False)
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert body["parallel_tool_calls"] is False
+
+
+async def test_openai_legacy_with_parallel_tool_calls_enabled():
+    """with_parallel_tool_calls(True) should omit parallel_tool_calls."""
+    with respx.mock(base_url="https://api.openai.com") as mock:
+        mock.post("/v1/chat/completions").mock(
+            return_value=Response(200, json=make_chat_completion_response())
+        )
+        provider = (
+            OpenAILegacy(model="gpt-4.1", api_key="test-key", stream=False)
+            .with_parallel_tool_calls(False)
+            .with_parallel_tool_calls(True)
+        )
+        stream = await provider.generate("", [], [Message(role="user", content="Hi")])
+        async for _ in stream:
+            pass
+        body = json.loads(mock.calls.last.request.content.decode())
+        assert "parallel_tool_calls" not in body
+
+
 async def test_openai_legacy_no_auto_reasoning_effort_without_reasoning_key():
     """When reasoning_key is not configured, reasoning_effort should not be auto-set
     even if history has ThinkPart (ThinkPart would be silently dropped)."""

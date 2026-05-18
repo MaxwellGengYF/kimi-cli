@@ -204,6 +204,25 @@ class OpenAIResponses:
         reasoning_effort = thinking_effort_to_reasoning_effort(effort)
         return self.with_generation_kwargs(reasoning_effort=reasoning_effort)
 
+    def with_parallel_tool_calls(self, enabled: bool = True) -> Self:
+        """Control whether the model may call multiple tools in parallel.
+
+        For the OpenAI Responses API there is no explicit ``parallel_tool_calls``
+        flag; parallel calling is controlled via ``max_tool_calls``. Setting
+        ``enabled=False`` caps ``max_tool_calls`` at ``1``.
+
+        Args:
+            enabled: When ``True`` (the default), no artificial limit is placed
+                on the number of simultaneous tool calls. When ``False``,
+                ``max_tool_calls`` is set to ``1``.
+        """
+        new_self = self.with_generation_kwargs()
+        if enabled:
+            new_self._generation_kwargs.pop("max_tool_calls", None)
+        else:
+            new_self._generation_kwargs["max_tool_calls"] = 1
+        return new_self
+
     def with_generation_kwargs(self, **kwargs: Unpack[GenerationKwargs]) -> Self:
         """
         Copy the chat provider, updating the generation kwargs with the given values.

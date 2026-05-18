@@ -178,7 +178,7 @@ def create_llm(
                 api_key=resolved_api_key,
                 reasoning_key=reasoning_key,
                 default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
-            )
+            ).with_parallel_tool_calls(enabled=True)
         case "openai_responses":
             from kosong.contrib.chat_provider.openai_responses import OpenAIResponses
 
@@ -187,7 +187,7 @@ def create_llm(
                 base_url=provider.base_url,
                 api_key=resolved_api_key,
                 default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
-            )
+            ).with_parallel_tool_calls(enabled=True)
         case "anthropic":
             from kosong.contrib.chat_provider.anthropic import Anthropic
 
@@ -198,7 +198,7 @@ def create_llm(
                 default_max_tokens=50000,
                 metadata={"user_id": session_id} if session_id else None,
                 default_headers=dict(provider.custom_headers) if provider.custom_headers else None,
-            )
+            ).with_parallel_tool_calls(enabled=True)
         case "google_genai" | "gemini":
             from kosong.contrib.chat_provider.google_genai import GoogleGenAI
 
