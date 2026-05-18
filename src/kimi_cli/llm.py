@@ -65,19 +65,19 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
 
     match provider.type:
         case "kimi":
-            if base_url := os.getenv("KIMI_BASE_URL"):
+            if not provider.base_url and (base_url := os.getenv("KIMI_BASE_URL")):
                 provider.base_url = base_url
                 applied["KIMI_BASE_URL"] = base_url
-            if api_key := os.getenv("KIMI_API_KEY"):
+            if not provider.api_key.get_secret_value() and (api_key := os.getenv("KIMI_API_KEY")):
                 provider.api_key = SecretStr(api_key)
                 applied["KIMI_API_KEY"] = "******"
-            if model_name := os.getenv("KIMI_MODEL_NAME"):
+            if not model.model and (model_name := os.getenv("KIMI_MODEL_NAME")):
                 model.model = model_name
                 applied["KIMI_MODEL_NAME"] = model_name
-            if max_context_size := os.getenv("KIMI_MODEL_MAX_CONTEXT_SIZE"):
+            if not model.max_context_size and (max_context_size := os.getenv("KIMI_MODEL_MAX_CONTEXT_SIZE")):
                 model.max_context_size = int(max_context_size)
                 applied["KIMI_MODEL_MAX_CONTEXT_SIZE"] = max_context_size
-            if capabilities := os.getenv("KIMI_MODEL_CAPABILITIES"):
+            if not model.capabilities and (capabilities := os.getenv("KIMI_MODEL_CAPABILITIES")):
                 caps_lower = (cap.strip().lower() for cap in capabilities.split(",") if cap.strip())
                 model.capabilities = set(
                     cast(ModelCapability, cap)
@@ -86,9 +86,9 @@ def augment_provider_with_env_vars(provider: LLMProvider, model: LLMModel) -> di
                 )
                 applied["KIMI_MODEL_CAPABILITIES"] = capabilities
         case "openai_legacy" | "openai_responses":
-            if base_url := os.getenv("OPENAI_BASE_URL"):
+            if not provider.base_url and (base_url := os.getenv("OPENAI_BASE_URL")):
                 provider.base_url = base_url
-            if api_key := os.getenv("OPENAI_API_KEY"):
+            if not provider.api_key.get_secret_value() and (api_key := os.getenv("OPENAI_API_KEY")):
                 provider.api_key = SecretStr(api_key)
         case _:
             pass
@@ -129,7 +129,6 @@ def create_llm(
         return None
     
     assert not thinking_effort or thinking_effort in LEGAL_THINKING_EFFORT, 'thinking_effort must be `off`, `low`, `medium`, `high`, `xhigh` and `max`'
-    
     resolved_api_key = (
         oauth.resolve_api_key(provider.api_key, provider.oauth)
         if oauth and provider.oauth
