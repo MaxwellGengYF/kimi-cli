@@ -23,7 +23,7 @@ from kimi_cli.utils.path import is_within_workspace, kaos_path_from_user_input
 from kimi_cli.vfs import VFS
 from .utils import resolve_vfs
 
-_BASE_DESCRIPTION = load_desc(Path(__file__).parent / "replace.md")
+_BASE_DESCRIPTION = "Replace strings in text files."
 
 
 class Edit(BaseModel):

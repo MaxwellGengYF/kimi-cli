@@ -1,1 +1,0 @@
-Search files using ripgrep.

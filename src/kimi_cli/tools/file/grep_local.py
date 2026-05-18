@@ -516,7 +516,7 @@ def _merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return [(m[0], m[1]) for m in merged]
 class Grep(CallableTool2[Params]):
     name: str = "Grep"
-    description: str = load_desc(Path(__file__).parent / "grep.md")
+    description: str = "Search files using ripgrep."
     params: type[Params] = Params
 
     def __init__(self, runtime: Runtime, vfs: VFS | None = None) -> None:

@@ -38,7 +38,7 @@ class Params(BaseModel):
 
 class SetTodoList(CallableTool2[Params]):
     name: str = "SetTodoList"
-    description: str = load_desc(Path(__file__).parent / "set_todo_list.md")
+    description: str = "Track progress with a todo list."
     params: type[Params] = Params
 
     def __init__(self, runtime: Runtime) -> None:
