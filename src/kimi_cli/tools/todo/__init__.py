@@ -178,9 +178,24 @@ class SetTodoList(CallableTool2[Params]):
         old_titles = {t.title for t in old_todos}
         new_titles = {t.title for t in new_todos}
 
+        # Partial update: when there's overlap, merge instead of replacing
+        if new_titles & old_titles:
+            status_map = {t.title: t.status for t in old_todos}
+            for new_todo in new_todos:
+                status_map[new_todo.title] = new_todo.status
+            merged: list[Todo] = []
+            seen: set[str] = set()
+            for t in old_todos:
+                merged.append(Todo(title=t.title, status=status_map[t.title]))
+                seen.add(t.title)
+            for new_todo in new_todos:
+                if new_todo.title not in seen:
+                    merged.append(new_todo)
+                    seen.add(new_todo.title)
+            return merged
+
         has_new_titles = bool(new_titles - old_titles)
         all_old_done = all(t.status == "done" for t in old_todos)
-
         if has_new_titles and not all_old_done:
             return ToolReturnValue(
                 is_error=True,
