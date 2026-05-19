@@ -60,7 +60,7 @@ class StepMemory(CallableTool2[Params]):
 
     def _storage_path(self) -> Path:
         session = self._runtime.session
-        path = Path(str(session.work_dir)) / ".kimix_cache" / "steps" / f"{session.id}.json"
+        path = session.dir / "steps" / f"{session.id}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 

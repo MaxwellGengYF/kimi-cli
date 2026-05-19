@@ -110,6 +110,13 @@ class Session:
         if not session_dir.exists():
             return
         await asyncio.to_thread(shutil.rmtree, session_dir, True)
+        
+    def delete_sync(self) -> None:
+        """Delete the session directory."""
+        session_dir = self.work_dir_meta.sessions_dir / self.id
+        if not session_dir.exists():
+            return
+        shutil.rmtree(session_dir, True)
 
     async def refresh(self) -> None:
         self.title = "Untitled"
@@ -211,7 +218,7 @@ class Session:
             work_dir_meta = metadata.new_work_dir_meta(work_dir)
 
         if session_id is None:
-            session_id = str(uuid.uuid4())
+            session_id = uuid.uuid4().hex
         session_dir = work_dir_meta.sessions_dir / session_id
         session_dir.mkdir(parents=True, exist_ok=True)
 
