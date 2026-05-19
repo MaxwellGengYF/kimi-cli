@@ -230,7 +230,7 @@ class SetTodoList(CallableTool2[Params]):
         if not todos:
             return ToolReturnValue(
                 is_error=False,
-                output="Todo list is empty.",
+                output="Todo list is empty. Consider using StepMemory(action='load') to recall key progress.",
                 message="",
                 display=[],
             )
@@ -240,7 +240,7 @@ class SetTodoList(CallableTool2[Params]):
             lines.append(f"- [{todo.status}] {todo.title}")
         return ToolReturnValue(
             is_error=False,
-            output="\n".join(lines),
+            output="\n".join(lines) + " Consider using StepMemory(action='load') to recall key progress.",
             message="",
             display=[],
         )

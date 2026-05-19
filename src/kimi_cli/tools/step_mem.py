@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.utils.io import atomic_json_write
-from kimi_cli.utils.logging import logger
 
 
 class Params(BaseModel):
@@ -26,7 +25,7 @@ class Params(BaseModel):
     )
     step: str | None = Field(
         default=None,
-        description="Required for save: description of what was done.",
+        description="Required for save: description of what was done. Optional for load: filter history to entries whose step text contains this value.",
     )
     result: str | None = Field(
         default=None,
@@ -47,7 +46,8 @@ class StepMemory(CallableTool2[Params]):
     description: str = (
         "Persist and retrieve structured work steps. "
         "Call action='save' after completing each key step. "
-        "Call action='load' after context compaction to recover full history."
+        "Call action='load' after context compaction to recover full history. "
+        "When loading, pass 'step' to filter history by step text."
     )
     params: type[Params] = Params
 
@@ -64,19 +64,17 @@ class StepMemory(CallableTool2[Params]):
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
-    def _load_steps(self) -> list[dict[str, Any]]:
+    def _load_steps(self) -> tuple[list[dict[str, Any]], str | None]:
         path = self._storage_path()
         if not path.exists():
-            return []
+            return [], None
         try:
             data = orjson.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, list):
-                return data
+                return data, None
         except (orjson.JSONDecodeError, OSError, UnicodeDecodeError):
-            logger.warning(
-                "Corrupted step memory file, using empty history: {path}", path=path
-            )
-        return []
+            pass
+        return [], f"Corrupted step memory file, using empty history: {path}"
 
     def _save_steps(self, steps: list[dict[str, Any]]) -> None:
         path = self._storage_path()
@@ -107,7 +105,7 @@ class StepMemory(CallableTool2[Params]):
     async def __call__(self, params: Params) -> ToolReturnValue:
         if params.action == "save":
             return await self._save(params)
-        return await self._load()
+        return await self._load(params)
 
     async def _save(self, params: Params) -> ToolReturnValue:
         if not params.step:
@@ -117,7 +115,7 @@ class StepMemory(CallableTool2[Params]):
             )
 
         with self._lock:
-            steps = self._load_steps()
+            steps, warning = self._load_steps()
             seq = steps[-1].get("seq", 0) + 1 if steps else 1
             entry: dict[str, Any] = {
                 "seq": seq,
@@ -134,17 +132,20 @@ class StepMemory(CallableTool2[Params]):
         brief_display = params.brief or params.step[:50]
         return ToolOk(
             output=f"Step #{seq} saved: {brief_display}",
-            message="Step recorded",
+            message=f"{warning}; step recorded" if warning else "Step recorded",
         )
 
-    async def _load(self) -> ToolReturnValue:
+    async def _load(self, params: Params) -> ToolReturnValue:
         with self._lock:
-            steps = self._load_steps()
+            steps, warning = self._load_steps()
+
+        if params.step:
+            steps = [s for s in steps if params.step in s.get("step", "")]
 
         if not steps:
             return ToolOk(
                 output="No step history found.",
-                message="Empty history",
+                message=warning or "Empty history",
             )
 
         lines: list[str] = [f"Step history ({len(steps)} entries):"]

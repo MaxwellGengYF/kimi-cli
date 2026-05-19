@@ -60,7 +60,7 @@ class TestStepMemorySave:
         assert "Step #1 saved" in result.output
         assert "Create User model" in result.output
 
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert len(steps) == 1
         assert steps[0]["step"] == "Defined SQLAlchemy User model with id/name/email"
         assert steps[0]["result"] == "Success"
@@ -93,7 +93,7 @@ class TestStepMemorySave:
             assert not result.is_error
             assert f"Step #{i} saved" in result.output
 
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert len(steps) == 3
         assert steps[0]["seq"] == 1
         assert steps[1]["seq"] == 2
@@ -106,7 +106,7 @@ class TestStepMemorySave:
         result = await step_memory_tool(params)
 
         assert not result.is_error
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert steps[0]["brief"] == "A" * 50
 
     async def test_save_result_defaults_to_empty_string(self, step_memory_tool: StepMemory):
@@ -114,7 +114,7 @@ class TestStepMemorySave:
         params = Params(action="save", step="Do something")
         result = await step_memory_tool(params)
 
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert steps[0]["result"] == ""
 
     async def test_save_files_defaults_to_empty_list(self, step_memory_tool: StepMemory):
@@ -122,7 +122,7 @@ class TestStepMemorySave:
         params = Params(action="save", step="Do something")
         result = await step_memory_tool(params)
 
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert steps[0]["files"] == []
 
     async def test_save_persists_across_instances(self, runtime: Runtime):
@@ -141,7 +141,7 @@ class TestStepMemorySave:
         result = await step_memory_tool(params)
 
         assert not result.is_error
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert steps[0]["files"] == []
 
     async def test_save_with_result_none(self, step_memory_tool: StepMemory):
@@ -150,7 +150,7 @@ class TestStepMemorySave:
         result = await step_memory_tool(params)
 
         assert not result.is_error
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert steps[0]["result"] == ""
 
     async def test_save_with_brief_none(self, step_memory_tool: StepMemory):
@@ -159,8 +159,21 @@ class TestStepMemorySave:
         result = await step_memory_tool(params)
 
         assert not result.is_error
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert steps[0]["brief"] == "Short step"
+
+    async def test_save_corrupted_file_returns_warning_in_message(self, step_memory_tool: StepMemory):
+        """Save with corrupted existing file should return warning in message."""
+        path = step_memory_tool._storage_path()
+        path.write_text("not valid json {{{", encoding="utf-8")
+
+        params = Params(action="save", step="Recover from corruption")
+        result = await step_memory_tool(params)
+
+        assert not result.is_error
+        assert "Corrupted step memory file" in result.message
+        assert "step recorded" in result.message
+        assert "Step #1 saved" in result.output
 
 
 class TestStepMemoryLoad:
@@ -229,6 +242,59 @@ class TestStepMemoryLoad:
         assert not result.is_error
         assert "files: x.py, y.py" in result.output
 
+    async def test_load_with_step_filter(self, step_memory_tool: StepMemory):
+        """Load with step filter should return only matching entries."""
+        await step_memory_tool(Params(action="save", step="Create user model"))
+        await step_memory_tool(Params(action="save", step="Create post model"))
+        await step_memory_tool(Params(action="save", step="Delete old data"))
+
+        result = await step_memory_tool(Params(action="load", step="model"))
+        assert not result.is_error
+        assert "Step history (2 entries)" in result.output
+        assert "Create user model" in result.output
+        assert "Create post model" in result.output
+        assert "Delete old data" not in result.output
+
+    async def test_load_with_step_filter_no_match(self, step_memory_tool: StepMemory):
+        """Load with step filter that matches nothing should return empty message."""
+        await step_memory_tool(Params(action="save", step="Some step"))
+
+        result = await step_memory_tool(Params(action="load", step="nonexistent"))
+        assert not result.is_error
+        assert "No step history found" in result.output
+        assert result.message == "Empty history"
+
+    async def test_load_with_empty_step_filter(self, step_memory_tool: StepMemory):
+        """Load with empty step string should behave like no filter."""
+        await step_memory_tool(Params(action="save", step="Step one"))
+        await step_memory_tool(Params(action="save", step="Step two"))
+
+        result = await step_memory_tool(Params(action="load", step=""))
+        assert not result.is_error
+        assert "Step history (2 entries)" in result.output
+        assert "Step one" in result.output
+        assert "Step two" in result.output
+
+    async def test_load_corrupted_file_returns_warning_in_message(self, step_memory_tool: StepMemory):
+        """Load with corrupted file should return warning in message."""
+        path = step_memory_tool._storage_path()
+        path.write_text("not valid json {{{", encoding="utf-8")
+
+        result = await step_memory_tool(Params(action="load"))
+        assert not result.is_error
+        assert "No step history found" in result.output
+        assert "Corrupted step memory file" in result.message
+
+    async def test_load_corrupted_file_with_filter_returns_warning(self, step_memory_tool: StepMemory):
+        """Load with corrupted file and filter should still return warning."""
+        path = step_memory_tool._storage_path()
+        path.write_text("not valid json {{{", encoding="utf-8")
+
+        result = await step_memory_tool(Params(action="load", step="something"))
+        assert not result.is_error
+        assert "No step history found" in result.output
+        assert "Corrupted step memory file" in result.message
+
 
 class TestStepMemoryCompaction:
     """Test automatic compaction of old steps."""
@@ -238,7 +304,7 @@ class TestStepMemoryCompaction:
         for i in range(5):
             await step_memory_tool(Params(action="save", step=f"Step {i}"))
 
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert len(steps) == 5
         for s in steps:
             assert "[compacted]" not in s["step"]
@@ -252,7 +318,7 @@ class TestStepMemoryCompaction:
             for i in range(10):
                 await step_memory_tool(Params(action="save", step=f"Step {i}"))
 
-            steps = step_memory_tool._load_steps()
+            steps, _ = step_memory_tool._load_steps()
             assert len(steps) == 10
             for s in steps:
                 assert "[compacted]" not in s["step"]
@@ -269,7 +335,7 @@ class TestStepMemoryCompaction:
                     Params(action="save", step=f"Step {i}", result=f"Result {i}", brief=f"Brief {i}")
                 )
 
-            steps = step_memory_tool._load_steps()
+            steps, _ = step_memory_tool._load_steps()
             assert len(steps) == 11
             # Oldest 5 should be compacted
             for s in steps[:5]:
@@ -294,7 +360,7 @@ class TestStepMemoryCompaction:
                     Params(action="save", step=f"Step {i}", brief=f"Brief{i}")
                 )
 
-            steps = step_memory_tool._load_steps()
+            steps, _ = step_memory_tool._load_steps()
             assert steps[0]["brief"] == "Brief0"
             assert steps[0]["step"].startswith("[compacted]")
         finally:
@@ -310,7 +376,7 @@ class TestStepMemoryCompaction:
             for i in range(4):
                 await step_memory_tool(Params(action="save", step=f"Filler {i}"))
 
-            steps = step_memory_tool._load_steps()
+            steps, _ = step_memory_tool._load_steps()
             compacted_step = steps[0]["step"]
             assert compacted_step.startswith("[compacted]")
             # "[compacted] " prefix is 12 chars, plus 100 chars = 112 total
@@ -378,69 +444,54 @@ class TestStepMemoryLoadSteps:
     """Test _load_steps internal method."""
 
     async def test_load_steps_empty_file(self, step_memory_tool: StepMemory):
-        """_load_steps returns empty list when file does not exist."""
-        steps = step_memory_tool._load_steps()
+        """_load_steps returns empty list and no warning when file does not exist."""
+        steps, warning = step_memory_tool._load_steps()
         assert steps == []
+        assert warning is None
 
     async def test_load_steps_valid_list(self, step_memory_tool: StepMemory):
-        """_load_steps returns list when file contains valid JSON list."""
+        """_load_steps returns list and no warning when file contains valid JSON list."""
         path = step_memory_tool._storage_path()
         path.write_text(json.dumps([{"seq": 1, "step": "test"}]), encoding="utf-8")
 
-        steps = step_memory_tool._load_steps()
+        steps, warning = step_memory_tool._load_steps()
         assert steps == [{"seq": 1, "step": "test"}]
+        assert warning is None
 
     async def test_load_steps_not_a_list(self, step_memory_tool: StepMemory):
-        """_load_steps returns empty list when JSON is not a list."""
+        """_load_steps returns empty list and warning when JSON is not a list."""
         path = step_memory_tool._storage_path()
         path.write_text(json.dumps({"not": "a list"}), encoding="utf-8")
 
-        steps = step_memory_tool._load_steps()
+        steps, warning = step_memory_tool._load_steps()
         assert steps == []
+        assert warning is not None
+        assert "Corrupted step memory file" in warning
 
-    async def test_load_steps_corrupted_json(self, step_memory_tool: StepMemory, monkeypatch):
-        """_load_steps returns empty list and logs warning for corrupted JSON."""
+    async def test_load_steps_corrupted_json(self, step_memory_tool: StepMemory):
+        """_load_steps returns empty list and warning for corrupted JSON."""
         path = step_memory_tool._storage_path()
         path.write_text("not valid json {{{", encoding="utf-8")
 
-        warnings: list[str] = []
-        from kimi_cli.tools.step_mem import logger as step_logger
-
-        original_warning = step_logger.warning
-
-        def capture_warning(msg: str, **kwargs: Any):
-            warnings.append(msg.format(**kwargs))
-            original_warning(msg, **kwargs)
-
-        monkeypatch.setattr(step_logger, "warning", capture_warning)
-
-        steps = step_memory_tool._load_steps()
+        steps, warning = step_memory_tool._load_steps()
         assert steps == []
-        assert any("Corrupted step memory file" in w for w in warnings)
+        assert warning is not None
+        assert "Corrupted step memory file" in warning
+        assert str(path) in warning
 
-    async def test_load_steps_unicode_decode_error(self, step_memory_tool: StepMemory, monkeypatch):
-        """_load_steps handles UnicodeDecodeError gracefully."""
+    async def test_load_steps_unicode_decode_error(self, step_memory_tool: StepMemory):
+        """_load_steps returns empty list and warning for UnicodeDecodeError."""
         path = step_memory_tool._storage_path()
         # Write invalid UTF-8 bytes
         path.write_bytes(b"\xff\xfe")
 
-        warnings: list[str] = []
-        from kimi_cli.tools.step_mem import logger as step_logger
-
-        original_warning = step_logger.warning
-
-        def capture_warning(msg: str, **kwargs: Any):
-            warnings.append(msg.format(**kwargs))
-            original_warning(msg, **kwargs)
-
-        monkeypatch.setattr(step_logger, "warning", capture_warning)
-
-        steps = step_memory_tool._load_steps()
+        steps, warning = step_memory_tool._load_steps()
         assert steps == []
-        assert any("Corrupted step memory file" in w for w in warnings)
+        assert warning is not None
+        assert "Corrupted step memory file" in warning
 
     async def test_load_steps_os_error(self, step_memory_tool: StepMemory, monkeypatch):
-        """_load_steps handles OSError gracefully."""
+        """_load_steps returns empty list and warning for OSError."""
         path = step_memory_tool._storage_path()
         path.write_text(json.dumps([{"seq": 1}]), encoding="utf-8")
 
@@ -449,20 +500,10 @@ class TestStepMemoryLoadSteps:
 
         monkeypatch.setattr(Path, "read_text", raise_oserror)
 
-        warnings: list[str] = []
-        from kimi_cli.tools.step_mem import logger as step_logger
-
-        original_warning = step_logger.warning
-
-        def capture_warning(msg: str, **kwargs: Any):
-            warnings.append(msg.format(**kwargs))
-            original_warning(msg, **kwargs)
-
-        monkeypatch.setattr(step_logger, "warning", capture_warning)
-
-        steps = step_memory_tool._load_steps()
+        steps, warning = step_memory_tool._load_steps()
         assert steps == []
-        assert any("Corrupted step memory file" in w for w in warnings)
+        assert warning is not None
+        assert "Corrupted step memory file" in warning
 
 
 class TestStepMemoryStoragePath:
@@ -513,7 +554,7 @@ class TestStepMemoryConcurrency:
         results = await asyncio.gather(*[save_step(i) for i in range(20)])
         assert all(not r.is_error for r in results)
 
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert len(steps) == 20
         # All seq values should be unique
         seqs = [s["seq"] for s in steps]
@@ -564,12 +605,12 @@ class TestStepMemoryEdgeCases:
             for i in range(5):
                 await step_memory_tool(Params(action="save", step=f"Step {i}"))
 
-            steps = step_memory_tool._load_steps()
+            steps, _ = step_memory_tool._load_steps()
             max_seq = max(s["seq"] for s in steps)
             assert max_seq == 5
 
             await step_memory_tool(Params(action="save", step="Next"))
-            steps = step_memory_tool._load_steps()
+            steps, _ = step_memory_tool._load_steps()
             seqs = [s["seq"] for s in steps]
             assert 6 in seqs
         finally:
@@ -578,7 +619,7 @@ class TestStepMemoryEdgeCases:
     async def test_time_is_iso_format(self, step_memory_tool: StepMemory):
         """Saved time should be ISO 8601 format."""
         await step_memory_tool(Params(action="save", step="Test"))
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         time_str = steps[0]["time"]
         assert "T" in time_str
         assert time_str.endswith("+00:00")
@@ -627,7 +668,7 @@ class TestStepMemoryPlanRequirements:
             )
         )
 
-        steps = step_memory_tool._load_steps()
+        steps, _ = step_memory_tool._load_steps()
         assert len(steps) == 1
         entry = steps[0]
         assert "seq" in entry and isinstance(entry["seq"], int)
