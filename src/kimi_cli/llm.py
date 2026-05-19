@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import orjson
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -341,8 +341,8 @@ def _load_scripted_echo_scripts() -> list[str]:
         raise ValueError(f"Scripted echo file not found: {path}")
     text = path.read_text(encoding="utf-8")
     try:
-        data: object = json.loads(text)
-    except json.JSONDecodeError:
+        data: object = orjson.loads(text)
+    except orjson.JSONDecodeError:
         scripts = [chunk.strip() for chunk in text.split("\n---\n") if chunk.strip()]
         if scripts:
             return scripts

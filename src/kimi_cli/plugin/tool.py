@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
+import orjson
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -83,7 +83,7 @@ class PluginTool(CallableTool):
             if not await self._approval.request(self.name, f"plugin:{self.name}", description):
                 return ToolRejectedError()
 
-        params_json = json.dumps(kwargs, ensure_ascii=False)
+        params_json = orjson.dumps(kwargs, option=orjson.OPT_NON_ASCII).decode('utf-8')
 
         try:
             proc = await asyncio.create_subprocess_exec(

@@ -1,5 +1,4 @@
 import json
-import orjson
 from typing import cast
 
 import streamingjson  # type: ignore[reportMissingTypeStubs]

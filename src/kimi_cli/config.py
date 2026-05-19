@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import orjson
 from pathlib import Path
 from typing import Literal, Self
 
@@ -330,11 +330,11 @@ def load_config(config_file: Path | None = None) -> Config:
     try:
         config_text = config_file.read_text(encoding="utf-8")
         if config_file.suffix.lower() == ".json":
-            data = json.loads(config_text)
+            data = orjson.loads(config_text)
         else:
             data = tomlkit.loads(config_text)
         config = Config.model_validate(data)
-    except json.JSONDecodeError as e:
+    except orjson.JSONDecodeError as e:
         raise ConfigError(f"Invalid JSON in configuration file {config_file}: {e}") from e
     except TOMLKitError as e:
         raise ConfigError(f"Invalid TOML in configuration file {config_file}: {e}") from e
@@ -361,10 +361,10 @@ def load_config_from_string(config_string: str) -> Config:
     if not config_string.strip():
         raise ConfigError("Configuration text cannot be empty")
 
-    json_error: json.JSONDecodeError | None = None
+    json_error: orjson.JSONDecodeError | None = None
     try:
-        data = json.loads(config_string)
-    except json.JSONDecodeError as exc:
+        data = orjson.loads(config_string)
+    except orjson.JSONDecodeError as exc:
         json_error = exc
         data = None
 
@@ -399,7 +399,7 @@ def save_config(config: Config, config_file: Path | None = None):
     config_data = config.model_dump(mode="json", exclude_none=True)
     with open(config_file, "w", encoding="utf-8") as f:
         if config_file.suffix.lower() == ".json":
-            f.write(json.dumps(config_data, ensure_ascii=False, indent=2))
+            f.write(orjson.dumps(config_data, option=orjson.OPT_NON_ASCII | orjson.OPT_INDENT_2).decode('utf-8'))
         else:
             f.write(tomlkit.dumps(config_data))  # type: ignore[reportUnknownMemberType]
 
@@ -421,9 +421,9 @@ def _migrate_json_config_to_toml() -> None:
 
     try:
         with open(old_json_config_file, encoding="utf-8") as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         config = Config.model_validate(data)
-    except json.JSONDecodeError as e:
+    except orjson.JSONDecodeError as e:
         raise ConfigError(f"Invalid JSON in legacy configuration file: {e}") from e
     except ValidationError as e:
         raise ConfigError(f"Invalid legacy configuration file: {e}") from e

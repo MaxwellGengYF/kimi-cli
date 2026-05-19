@@ -1,0 +1,168 @@
+"""Persist and retrieve structured work steps to survive context compaction.
+
+Steps are stored under `.kimix_cache/steps/{session_id}.json` so they remain
+accessible after `/compact` wipes the conversation history.
+"""
+
+from __future__ import annotations
+
+import orjson
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Literal, override
+
+from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
+from pydantic import BaseModel, Field
+
+from kimi_cli.soul.agent import Runtime
+from kimi_cli.utils.io import atomic_json_write
+from kimi_cli.utils.logging import logger
+
+
+class Params(BaseModel):
+    action: Literal["save", "load"] = Field(
+        description='Action to perform: "save" to record a step, "load" to retrieve history.'
+    )
+    step: str | None = Field(
+        default=None,
+        description="Required for save: description of what was done.",
+    )
+    result: str | None = Field(
+        default=None,
+        description="Optional for save: outcome summary (success/failure/output).",
+    )
+    files: list[str] | None = Field(
+        default=None,
+        description="Optional for save: list of files involved in this step.",
+    )
+    brief: str | None = Field(
+        default=None,
+        description="Optional for save: short title used for quick indexing after compaction.",
+    )
+
+
+class StepMemory(CallableTool2[Params]):
+    name: str = "StepMemory"
+    description: str = (
+        "Persist and retrieve structured work steps. "
+        "Call action='save' after completing each key step. "
+        "Call action='load' after context compaction to recover full history."
+    )
+    params: type[Params] = Params
+
+    _MAX_ENTRIES: int = 200
+    _lock = threading.Lock()
+
+    def __init__(self, runtime: Runtime) -> None:
+        super().__init__()
+        self._runtime = runtime
+
+    def _storage_path(self) -> Path:
+        session = self._runtime.session
+        path = Path(str(session.work_dir)) / ".kimix_cache" / "steps" / f"{session.id}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def _load_steps(self) -> list[dict[str, Any]]:
+        path = self._storage_path()
+        if not path.exists():
+            return []
+        try:
+            data = orjson.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return data
+        except (orjson.JSONDecodeError, OSError, UnicodeDecodeError):
+            logger.warning(
+                "Corrupted step memory file, using empty history: {path}", path=path
+            )
+        return []
+
+    def _save_steps(self, steps: list[dict[str, Any]]) -> None:
+        path = self._storage_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_json_write(steps, path)
+
+    def _maybe_compact(self, steps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if len(steps) <= self._MAX_ENTRIES:
+            return steps
+
+        # Compact the oldest half, preserving brief for indexing.
+        split = len(steps) // 2
+        compacted: list[dict[str, Any]] = []
+        for s in steps[:split]:
+            compacted.append(
+                {
+                    "seq": s.get("seq"),
+                    "time": s.get("time"),
+                    "brief": s.get("brief"),
+                    "step": "[compacted] " + (s.get("step", ""))[:100],
+                    "result": "[compacted]",
+                    "files": [],
+                }
+            )
+        return compacted + steps[split:]
+
+    @override
+    async def __call__(self, params: Params) -> ToolReturnValue:
+        if params.action == "save":
+            return await self._save(params)
+        return await self._load()
+
+    async def _save(self, params: Params) -> ToolReturnValue:
+        if not params.step:
+            return ToolError(
+                message="Field 'step' is required when action='save'.",
+                brief="Missing step description",
+            )
+
+        with self._lock:
+            steps = self._load_steps()
+            seq = steps[-1].get("seq", 0) + 1 if steps else 1
+            entry: dict[str, Any] = {
+                "seq": seq,
+                "time": datetime.now(timezone.utc).isoformat(),
+                "brief": params.brief or params.step[:50],
+                "step": params.step,
+                "result": params.result or "",
+                "files": params.files or [],
+            }
+            steps.append(entry)
+            steps = self._maybe_compact(steps)
+            self._save_steps(steps)
+
+        brief_display = params.brief or params.step[:50]
+        return ToolOk(
+            output=f"Step #{seq} saved: {brief_display}",
+            message="Step recorded",
+        )
+
+    async def _load(self) -> ToolReturnValue:
+        with self._lock:
+            steps = self._load_steps()
+
+        if not steps:
+            return ToolOk(
+                output="No step history found.",
+                message="Empty history",
+            )
+
+        lines: list[str] = [f"Step history ({len(steps)} entries):"]
+        for s in steps:
+            seq = s.get("seq", "?")
+            time = s.get("time", "?")
+            brief = s.get("brief", "")
+            step = s.get("step", "")
+            result = s.get("result", "")
+            files = s.get("files", [])
+            files_str = f" | files: {', '.join(files)}" if files else ""
+            lines.append(
+                f"#{seq} [{time}] {brief}\n"
+                f"  step: {step}\n"
+                f"  result: {result}{files_str}"
+            )
+
+        return ToolOk(
+            output="\n\n".join(lines),
+            message=f"Loaded {len(steps)} steps",
+        )

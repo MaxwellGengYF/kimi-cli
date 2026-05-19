@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import orjson
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -118,12 +118,12 @@ def _load_agent_spec(agent_file: Path) -> AgentSpec:
     try:
         with open(agent_file, encoding="utf-8") as f:
             if suffix == ".json":
-                data: dict[str, Any] = json.load(f)
+                data: dict[str, Any] = orjson.loads(f.read())
             else:
                 data: dict[str, Any] = yaml.safe_load(f)
     except yaml.YAMLError as e:
         raise AgentSpecError(f"Invalid YAML in agent spec file: {e}") from e
-    except json.JSONDecodeError as e:
+    except orjson.JSONDecodeError as e:
         raise AgentSpecError(f"Invalid JSON in agent spec file: {e}") from e
 
     version = str(data.get("version", DEFAULT_AGENT_SPEC_VERSION))

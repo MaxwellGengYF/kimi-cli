@@ -1,4 +1,4 @@
-import json
+import orjson
 from pathlib import Path
 from typing import Any, Literal, cast, override
 
@@ -136,7 +136,7 @@ class SetTodoList(CallableTool2[Params]):
         return ToolReturnValue(
             is_error=False,
             output=output,
-            message="Todo list updated",
+            message="Todo list updated. Consider using StepMemory(action='save') to record key progress.",
             display=[TodoDisplayBlock(items=items)],
         )
 
@@ -319,8 +319,8 @@ class SetTodoList(CallableTool2[Params]):
         if not path.exists():
             return {}
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            data = orjson.loads(path.read_text(encoding="utf-8"))
+        except (orjson.JSONDecodeError, OSError, UnicodeDecodeError):
             logger.warning("Corrupted subagent todo state, using defaults: {path}", path=path)
             return {}
         if not isinstance(data, dict):

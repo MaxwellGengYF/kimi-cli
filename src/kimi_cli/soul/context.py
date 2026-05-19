@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
@@ -98,7 +97,7 @@ class Context:
         temporary file to avoid corruption on crash and avoid loading the entire file
         into memory.
         """
-        prompt_line = json.dumps({"role": "_system_prompt", "content": prompt}) + "\n"
+        prompt_line = orjson.dumps({"role": "_system_prompt", "content": prompt}).decode('utf-8') + "\n"
 
         def _write_system_prompt_sync() -> None:
             if not self._file_backend.exists() or self._file_backend.stat().st_size == 0:
@@ -128,7 +127,7 @@ class Context:
         logger.debug("Checkpointing, ID: {id}", id=checkpoint_id)
 
         async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
-            await f.write(json.dumps({"role": "_checkpoint", "id": checkpoint_id}) + "\n")
+            await f.write(orjson.dumps({"role": "_checkpoint", "id": checkpoint_id}).decode('utf-8') + "\n")
         if add_user_message:
             await self.append_message(
                 Message(role="user", content=[system(f"CHECKPOINT {checkpoint_id}")])
@@ -247,7 +246,7 @@ class Context:
         self._pending_token_estimate = 0
 
         async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
-            await f.write(json.dumps({"role": "_usage", "token_count": token_count}) + "\n")
+            await f.write(orjson.dumps({"role": "_usage", "token_count": token_count}).decode('utf-8') + "\n")
 
     def _parse_context_line(
         self,
@@ -258,7 +257,7 @@ class Context:
     ) -> dict[str, Any] | None:
         try:
             line_json = loads_relaxed(line)
-        except (orjson.JSONDecodeError, json.JSONDecodeError) as exc:
+        except orjson.JSONDecodeError as exc:
             logger.warning(
                 "Skipping malformed context line {line_no} in {file}: {error}",
                 line_no=line_no,

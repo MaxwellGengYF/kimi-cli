@@ -1,6 +1,6 @@
 """Plugin specification parsing and config injection."""
 
-import json
+import orjson
 from pathlib import Path
 from typing import Any
 
@@ -47,8 +47,8 @@ PLUGIN_JSON = "plugin.json"
 def parse_plugin_json(path: Path) -> PluginSpec:
     """Parse a plugin.json file and return a validated PluginSpec."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        data = orjson.loads(path.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError) as exc:
         raise PluginError(f"Failed to read {path}: {exc}") from exc
 
     if "name" not in data:
@@ -82,8 +82,8 @@ def inject_config(plugin_dir: Path, spec: PluginSpec, values: dict[str, str]) ->
         raise PluginError(f"Config file not found: {config_path}")
 
     try:
-        config = json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        config = orjson.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError) as exc:
         raise PluginError(f"Failed to read config file {config_path}: {exc}") from exc
 
     for target_path, source_key in spec.inject.items():
@@ -92,7 +92,7 @@ def inject_config(plugin_dir: Path, spec: PluginSpec, values: dict[str, str]) ->
         _set_nested(config, target_path, values[source_key])
 
     config_path.write_text(
-        json.dumps(config, ensure_ascii=False, indent=2),
+        orjson.dumps(config, option=orjson.OPT_NON_ASCII | orjson.OPT_INDENT_2).decode('utf-8'),
         encoding="utf-8",
     )
 
@@ -101,12 +101,12 @@ def write_runtime(plugin_dir: Path, runtime: PluginRuntime) -> None:
     """Write runtime info into plugin.json."""
     plugin_json_path = plugin_dir / PLUGIN_JSON
     try:
-        data = json.loads(plugin_json_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        data = orjson.loads(plugin_json_path.read_text(encoding="utf-8"))
+    except (OSError, orjson.JSONDecodeError) as exc:
         raise PluginError(f"Failed to read {plugin_json_path}: {exc}") from exc
     data["runtime"] = runtime.model_dump()
     plugin_json_path.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2),
+        orjson.dumps(data, option=orjson.OPT_NON_ASCII | orjson.OPT_INDENT_2).decode('utf-8'),
         encoding="utf-8",
     )
 

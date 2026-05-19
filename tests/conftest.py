@@ -45,6 +45,7 @@ from kimi_cli.tools.file.replace import EditFile
 from kimi_cli.tools.file.write import WriteFile
 from kimi_cli.tools.shell import Shell
 from kimi_cli.tools.think import Think
+from kimi_cli.tools.step_mem import StepMemory
 from kimi_cli.tools.todo import SetTodoList
 from kimi_cli.tools.web.fetch import FetchURL
 from kimi_cli.tools.web.search import SearchWeb
@@ -129,6 +130,7 @@ def session(temp_work_dir: KaosPath, temp_share_dir: Path) -> Session:
         title="Test Session",
         updated_at=0.0,
         custom_data={},
+        custom_config={},
     )
 
 
@@ -254,6 +256,12 @@ def think_tool() -> Think:
 def set_todo_list_tool(runtime: Runtime) -> SetTodoList:
     """Create a SetTodoList tool instance."""
     return SetTodoList(runtime)
+
+
+@pytest.fixture
+def step_memory_tool(runtime: Runtime) -> StepMemory:
+    """Create a StepMemory tool instance."""
+    return StepMemory(runtime)
 
 
 @pytest.fixture
