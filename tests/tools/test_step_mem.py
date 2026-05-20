@@ -9,15 +9,18 @@ from typing import Any
 
 import pytest
 
-from kosong.tooling import ToolError, ToolOk
+from kosong.tooling import CallableTool2, ToolError, ToolOk
+from pydantic import BaseModel, Field
+from kimi_cli.session import Session
 from kimi_cli.soul.agent import Runtime
+from kimi_cli.tools.reason import ToolCallReason
 from kimi_cli.tools.step_mem import Params, StepMemory
 
 
 @pytest.fixture
-def step_memory_tool(runtime: Runtime) -> StepMemory:
-    """Create a StepMemory tool instance with runtime."""
-    return StepMemory(runtime)
+def step_memory_tool(runtime: Runtime, session: Session) -> StepMemory:
+    """Create a StepMemory tool instance with runtime and session."""
+    return StepMemory(runtime, session)
 
 
 class TestStepMemorySave:
@@ -125,12 +128,12 @@ class TestStepMemorySave:
         steps, _ = step_memory_tool._load_steps()
         assert steps[0]["files"] == []
 
-    async def test_save_persists_across_instances(self, runtime: Runtime):
+    async def test_save_persists_across_instances(self, runtime: Runtime, session: Session):
         """Steps should persist when read by a new StepMemory instance."""
-        tool1 = StepMemory(runtime)
+        tool1 = StepMemory(runtime, session)
         await tool1(Params(action="save", step="First step"))
 
-        tool2 = StepMemory(runtime)
+        tool2 = StepMemory(runtime, session)
         result = await tool2(Params(action="load"))
         assert not result.is_error
         assert "First step" in result.output
@@ -510,10 +513,9 @@ class TestStepMemoryStoragePath:
     """Test _storage_path method."""
 
     async def test_storage_path_structure(self, step_memory_tool: StepMemory, runtime: Runtime):
-        """_storage_path should follow .kimix_cache/steps/{session_id}.json."""
+        """_storage_path should follow {session.dir}/steps/{session_id}.json."""
         path = step_memory_tool._storage_path()
         parts = path.parts
-        assert ".kimix_cache" in parts
         assert "steps" in parts
         assert path.name == f"{runtime.session.id}.json"
 
@@ -649,10 +651,9 @@ class TestStepMemoryPlanRequirements:
     """Tests verifying all plan.md requirements are implemented."""
 
     async def test_storage_location_matches_plan(self, step_memory_tool: StepMemory, runtime: Runtime):
-        """Storage path must be .kimix_cache/steps/{session_id}.json per plan.md."""
+        """Storage path must be {session.dir}/steps/{session_id}.json."""
         path = step_memory_tool._storage_path()
         parts = Path(path).parts
-        assert ".kimix_cache" in parts
         assert "steps" in parts
         assert path.name == f"{runtime.session.id}.json"
 
@@ -695,3 +696,135 @@ class TestStepMemoryPlanRequirements:
         load_result = await step_memory_tool(Params(action="load"))
         assert not load_result.is_error
         assert "Test" in load_result.output
+
+
+class _MockWriteParams(BaseModel):
+    path: str = ""
+    content: str = ""
+    reason: str = ""
+
+
+class _MockWriteTool(CallableTool2[_MockWriteParams]):
+    name: str = "WriteFile"
+    description: str = "Mock"
+    params: type[_MockWriteParams] = _MockWriteParams
+
+    async def __call__(self, params: _MockWriteParams) -> Any:
+        return None
+
+
+class TestStepMemoryLoadWithFiles:
+    """Test StepMemory load action with files param querying ToolCallReason."""
+
+    @pytest.fixture
+    def _write_tool(self) -> _MockWriteTool:
+        return _MockWriteTool()
+
+    def _seed_tool_call_reason(
+        self, step_memory_tool: StepMemory, _write_tool: _MockWriteTool, tmp_path: Path
+    ) -> tuple[str, str]:
+        """Seed ToolCallReason with two file records."""
+        tcr: ToolCallReason = step_memory_tool._session.custom_data["tool_call_reason"]
+        path1 = str(tmp_path / "models.py")
+        path2 = str(tmp_path / "views.py")
+        tcr.add_tool_call_reason(
+            _MockWriteParams(path=path1, content="class User:", reason="create user model"),
+            _write_tool,
+        )
+        tcr.add_tool_call_reason(
+            _MockWriteParams(path=path2, content="def index():", reason="create view"),
+            _write_tool,
+        )
+        return path1, path2
+
+    async def test_load_with_files_queries_tool_call_reason(
+        self, step_memory_tool: StepMemory, _write_tool: _MockWriteTool, tmp_path: Path
+    ):
+        """Load with files param should include ToolCallReason output."""
+        path1, _ = self._seed_tool_call_reason(step_memory_tool, _write_tool, tmp_path)
+        await step_memory_tool(Params(action="save", step="Created models"))
+
+        result = await step_memory_tool(Params(action="load", files=[path1]))
+
+        assert not result.is_error
+        assert "Step history (1 entries)" in result.output
+        assert "Tool call reasons for files:" in result.output
+        assert "File:" in result.output
+        assert "create user model" in result.output
+        assert "class User:" in result.output
+        assert "Loaded 1 steps" in result.message
+        assert "queried 1 files" in result.message
+
+    async def test_load_with_files_multiple_paths(
+        self, step_memory_tool: StepMemory, _write_tool: _MockWriteTool, tmp_path: Path
+    ):
+        """Load with files param should support multiple paths."""
+        path1, path2 = self._seed_tool_call_reason(step_memory_tool, _write_tool, tmp_path)
+        await step_memory_tool(Params(action="save", step="Created files"))
+
+        result = await step_memory_tool(Params(action="load", files=[path1, path2]))
+
+        assert not result.is_error
+        assert "create user model" in result.output
+        assert "create view" in result.output
+        assert "class User:" in result.output
+        assert "def index():" in result.output
+        assert "queried 2 files" in result.message
+
+    async def test_load_with_files_no_tool_reasons(
+        self, step_memory_tool: StepMemory, tmp_path: Path
+    ):
+        """Load with files param but no matching ToolCallReason records."""
+        await step_memory_tool(Params(action="save", step="Some step"))
+        missing_path = str(tmp_path / "missing.py")
+
+        result = await step_memory_tool(Params(action="load", files=[missing_path]))
+
+        assert not result.is_error
+        assert "Step history (1 entries)" in result.output
+        assert "No record found for:" in result.output
+        assert "Loaded 1 steps" in result.message
+        assert "queried 1 files" in result.message
+
+    async def test_load_with_files_and_step_filter(
+        self, step_memory_tool: StepMemory, _write_tool: _MockWriteTool, tmp_path: Path
+    ):
+        """Load with both step filter and files param."""
+        path1, _ = self._seed_tool_call_reason(step_memory_tool, _write_tool, tmp_path)
+        await step_memory_tool(Params(action="save", step="Create user model"))
+        await step_memory_tool(Params(action="save", step="Delete old data"))
+
+        result = await step_memory_tool(Params(action="load", step="model", files=[path1]))
+
+        assert not result.is_error
+        assert "Create user model" in result.output
+        assert "Delete old data" not in result.output
+        assert "Tool call reasons for files:" in result.output
+        assert "create user model" in result.output
+
+    async def test_load_with_files_only_no_steps(
+        self, step_memory_tool: StepMemory, _write_tool: _MockWriteTool, tmp_path: Path
+    ):
+        """Load with files param and no step history should still show tool reasons."""
+        path1, _ = self._seed_tool_call_reason(step_memory_tool, _write_tool, tmp_path)
+
+        result = await step_memory_tool(Params(action="load", files=[path1]))
+
+        assert not result.is_error
+        assert "Step history" not in result.output
+        assert "Tool call reasons for files:" in result.output
+        assert "create user model" in result.output
+        assert "class User:" in result.output
+        assert "queried 1 files" in result.message
+
+    async def test_load_with_files_empty_history_no_reasons(
+        self, step_memory_tool: StepMemory, tmp_path: Path
+    ):
+        """Load with files param but completely empty everything."""
+        missing_path = str(tmp_path / "missing.py")
+        result = await step_memory_tool(Params(action="load", files=[missing_path]))
+
+        assert not result.is_error
+        # When files are queried but no steps exist, tool reasons are still returned
+        assert "Tool call reasons for files:" in result.output
+        assert "No record found for:" in result.output

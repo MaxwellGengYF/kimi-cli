@@ -7,10 +7,12 @@ from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, DisplayBlock, ToolError, ToolReturnValue
 from pydantic import BaseModel, Field
 
+from kimi_cli.session import Session
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.soul.approval import Approval
 from kimi_cli.tools.display import DiffDisplayBlock
 from kimi_cli.tools.file import FileActions
+from kimi_cli.tools.reason import ToolCallReason
 from kimi_cli.tools.file.check_fmt import check_json_text, check_toml_text, check_xml_text, check_yaml_text
 from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.utils.diff import build_diff_blocks
@@ -31,6 +33,10 @@ class Params(BaseModel):
         description="Write mode: overwrite or append.",
         default="overwrite",
     )
+    reason: str = Field(
+        default="",
+        description="Reason to call this tool.",
+    )
 
 
 class WriteFile(CallableTool2[Params]):
@@ -38,11 +44,12 @@ class WriteFile(CallableTool2[Params]):
     description: str = _BASE_DESCRIPTION
     params: type[Params] = Params
 
-    def __init__(self, runtime: Runtime, approval: Approval, vfs: VFS | None = None):
+    def __init__(self, runtime: Runtime, approval: Approval, session: Session, vfs: VFS | None = None):
         super().__init__()
         self._work_dir = runtime.builtin_args.KIMI_WORK_DIR
         self._additional_dirs = runtime.additional_dirs
         self._approval = approval
+        self._session = session
         self._vfs = vfs
         self._plan_mode_checker: Callable[[], bool] | None = None
         self._plan_file_path_getter: Callable[[], Path | None] | None = None
@@ -81,6 +88,10 @@ class WriteFile(CallableTool2[Params]):
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
+        tool_call_reason = self._session.custom_data.get("tool_call_reason")
+        if isinstance(tool_call_reason, ToolCallReason):
+            tool_call_reason.add_tool_call_reason(params, self)
+
         # TODO: checks:
         # - check if the path may contain secrets
         if not params.path:

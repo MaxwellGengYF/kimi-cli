@@ -11,11 +11,13 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, override
+from kimi_cli.session import Session
 
 from kosong.tooling import CallableTool2, ToolError, ToolOk, ToolReturnValue
 from pydantic import BaseModel, Field
 
 from kimi_cli.soul.agent import Runtime
+from kimi_cli.tools.reason import ToolCallReason
 from kimi_cli.utils.io import atomic_json_write
 
 
@@ -33,7 +35,7 @@ class Params(BaseModel):
     )
     files: list[str] | None = Field(
         default=None,
-        description="Optional for save: list of files involved in this step.",
+        description="Optional: for save, list of files involved in this step. For load, search ToolCallReason for these files.",
     )
     brief: str | None = Field(
         default=None,
@@ -47,16 +49,19 @@ class StepMemory(CallableTool2[Params]):
         "Persist and retrieve structured work steps. "
         "Call action='save' after completing each key step. "
         "Call action='load' after context compaction to recover full history. "
-        "When loading, pass 'step' to filter history by step text."
+        "When loading, pass 'step' to filter history by step text, or 'files' to search tool call reasons."
     )
     params: type[Params] = Params
 
     _MAX_ENTRIES: int = 200
     _lock = threading.Lock()
 
-    def __init__(self, runtime: Runtime) -> None:
+    def __init__(self, runtime: Runtime, session: Session) -> None:
         super().__init__()
         self._runtime = runtime
+        self._session = session
+        if "tool_call_reason" not in session.custom_data:
+            session.custom_data["tool_call_reason"] = ToolCallReason()
 
     def _storage_path(self) -> Path:
         session = self._runtime.session
@@ -142,28 +147,47 @@ class StepMemory(CallableTool2[Params]):
         if params.step:
             steps = [s for s in steps if params.step in s.get("step", "")]
 
-        if not steps:
+        parts: list[str] = []
+
+        if steps:
+            lines: list[str] = [f"Step history ({len(steps)} entries):"]
+            for s in steps:
+                seq = s.get("seq", "?")
+                time = s.get("time", "?")
+                brief = s.get("brief", "")
+                step = s.get("step", "")
+                result = s.get("result", "")
+                files = s.get("files", [])
+                files_str = f" | files: {', '.join(files)}" if files else ""
+                lines.append(
+                    f"#{seq} [{time}] {brief}\n"
+                    f"  step: {step}\n"
+                    f"  result: {result}{files_str}"
+                )
+            parts.append("\n\n".join(lines))
+
+        if params.files:
+            tcr: ToolCallReason = self._session.custom_data.get(
+                "tool_call_reason", ToolCallReason()
+            )
+            tool_reasons = tcr.formatted_print(params.files)
+            if tool_reasons:
+                parts.append(f"Tool call reasons for files:\n\n{tool_reasons}")
+
+        if not parts:
             return ToolOk(
                 output="No step history found.",
                 message=warning or "Empty history",
             )
 
-        lines: list[str] = [f"Step history ({len(steps)} entries):"]
-        for s in steps:
-            seq = s.get("seq", "?")
-            time = s.get("time", "?")
-            brief = s.get("brief", "")
-            step = s.get("step", "")
-            result = s.get("result", "")
-            files = s.get("files", [])
-            files_str = f" | files: {', '.join(files)}" if files else ""
-            lines.append(
-                f"#{seq} [{time}] {brief}\n"
-                f"  step: {step}\n"
-                f"  result: {result}{files_str}"
-            )
+        msg_parts: list[str] = []
+        if steps:
+            msg_parts.append(f"Loaded {len(steps)} steps")
+        if params.files:
+            msg_parts.append(f"queried {len(params.files)} files")
+        message = "; ".join(msg_parts) if msg_parts else (warning or "Done")
 
         return ToolOk(
-            output="\n\n".join(lines),
-            message=f"Loaded {len(steps)} steps",
+            output="\n\n".join(parts),
+            message=message,
         )

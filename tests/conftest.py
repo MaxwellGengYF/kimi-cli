@@ -259,9 +259,9 @@ def set_todo_list_tool(runtime: Runtime) -> SetTodoList:
 
 
 @pytest.fixture
-def step_memory_tool(runtime: Runtime) -> StepMemory:
+def step_memory_tool(runtime: Runtime, session: Session) -> StepMemory:
     """Create a StepMemory tool instance."""
-    return StepMemory(runtime)
+    return StepMemory(runtime, session)
 
 
 @pytest.fixture
