@@ -88,7 +88,7 @@ class TestToolCallReasonAdd:
         assert len(tracker._records[abs_path]) == 1
         assert tracker._records[abs_path][0]["tool_name"] == "WriteFile"
         assert tracker._records[abs_path][0]["reason"] == "create file"
-        assert tracker._records[abs_path][0]["content"] == "hello"
+        assert "content" not in tracker._records[abs_path][0]
         assert "old" not in tracker._records[abs_path][0]
 
     def test_add_edit_file_single(self, tracker: ToolCallReason, edit_tool: MockEditFileTool, tmp_path: Path):
@@ -110,8 +110,8 @@ class TestToolCallReasonAdd:
         record = tracker._records[abs_path][0]
         assert record["tool_name"] == "EditFile"
         assert record["reason"] == "fix typo"
-        assert record["old"] == "foo"
-        assert record["content"] == "bar"
+        assert "old" not in record
+        assert "content" not in record
 
     def test_add_edit_file_list(self, tracker: ToolCallReason, edit_tool: MockEditFileTool, tmp_path: Path):
         from pydantic import BaseModel, Field
@@ -130,8 +130,9 @@ class TestToolCallReasonAdd:
 
         abs_path = str((tmp_path / "c.py").resolve())
         record = tracker._records[abs_path][0]
-        assert record["old"] == "a\nb"
-        assert record["content"] == "1\n2"
+        assert "old" not in record
+        assert "content" not in record
+        assert record["reason"] == "batch update"
 
     def test_add_edit_file_none_edit(self, tracker: ToolCallReason, edit_tool: MockEditFileTool, tmp_path: Path):
         params = MockEditFileParams(path=str(tmp_path / "d.py"), edit=None, reason="noop")
@@ -139,8 +140,9 @@ class TestToolCallReasonAdd:
 
         abs_path = str((tmp_path / "d.py").resolve())
         record = tracker._records[abs_path][0]
-        assert record["old"] == ""
-        assert record["content"] == ""
+        assert "old" not in record
+        assert "content" not in record
+        assert record["reason"] == "noop"
 
     def test_add_wrong_tool_raises(self, tracker: ToolCallReason, wrong_tool: MockWrongTool, tmp_path: Path):
         params = MockWriteFileParams(path=str(tmp_path / "x.py"), content="x")
@@ -168,7 +170,7 @@ class TestToolCallReasonFormattedPrint:
 
     def test_formatted_print_no_records(self, tracker: ToolCallReason, tmp_path: Path):
         result = tracker.formatted_print([str(tmp_path / "missing.py")])
-        assert "No record found for:" in result
+        assert "no record" in result
 
     def test_formatted_print_single_write_file(self, tracker: ToolCallReason, write_tool: MockWriteFileTool, tmp_path: Path):
         path = str(tmp_path / "a.py")
@@ -176,10 +178,9 @@ class TestToolCallReasonFormattedPrint:
 
         result = tracker.formatted_print([path])
         abs_path = str(Path(path).resolve())
-        assert f"File: {abs_path}" in result
-        assert "[Change #1] Tool: WriteFile" in result
-        assert "Reason: init" in result
-        assert "hello world" in result
+        assert f"- {abs_path}" in result
+        assert "WriteFile: init" in result
+        assert "hello world" not in result
         assert "--- old ---" not in result
 
     def test_formatted_print_single_edit_file(self, tracker: ToolCallReason, edit_tool: MockEditFileTool, tmp_path: Path):
@@ -197,12 +198,10 @@ class TestToolCallReasonFormattedPrint:
         )
 
         result = tracker.formatted_print([path])
-        assert "[Change #1] Tool: EditFile" in result
-        assert "Reason: update" in result
-        assert "--- old ---" in result
-        assert "old_text" in result
-        assert "--- new ---" in result
-        assert "new_text" in result
+        assert "EditFile: update" in result
+        assert "--- old ---" not in result
+        assert "old_text" not in result
+        assert "new_text" not in result
 
     def test_formatted_print_multiple_paths(self, tracker: ToolCallReason, write_tool: MockWriteFileTool, tmp_path: Path):
         path1 = str(tmp_path / "a.py")
@@ -211,11 +210,9 @@ class TestToolCallReasonFormattedPrint:
         tracker.add_tool_call_reason(MockWriteFileParams(path=path2, content="b", reason="rb"), write_tool)
 
         result = tracker.formatted_print([path1, path2])
-        assert "File:" in result
         assert "ra" in result
         assert "rb" in result
-        assert "a" in result
-        assert "b" in result
+        assert "- " in result
 
     def test_formatted_print_multiple_records_same_path(self, tracker: ToolCallReason, write_tool: MockWriteFileTool, tmp_path: Path):
         path = str(tmp_path / "a.py")
@@ -223,72 +220,40 @@ class TestToolCallReasonFormattedPrint:
         tracker.add_tool_call_reason(MockWriteFileParams(path=path, content="v2", reason="r2"), write_tool)
 
         result = tracker.formatted_print([path])
-        assert "[Change #1]" in result
-        assert "[Change #2]" in result
-        assert "r1" in result
-        assert "r2" in result
+        assert "WriteFile: r1" in result
+        assert "WriteFile: r2" in result
 
     def test_formatted_print_returns_string_not_prints(self, tracker: ToolCallReason, tmp_path: Path):
         result = tracker.formatted_print([str(tmp_path / "none.py")])
         assert isinstance(result, str)
 
 
-class TestToolCallReasonTruncateText:
-    """Test _truncate_text static method."""
+class TestToolCallReasonChangedFiles:
+    """Test changed_files and to_markdown."""
 
-    def test_truncate_short_text_passthrough(self):
-        text = "short text"
-        result = ToolCallReason._truncate_text(text)
-        assert result == text
+    def test_changed_files_sorted(self, tracker: ToolCallReason, write_tool: MockWriteFileTool, tmp_path: Path):
+        tracker.add_tool_call_reason(MockWriteFileParams(path=str(tmp_path / "z.py"), content="z", reason="rz"), write_tool)
+        tracker.add_tool_call_reason(MockWriteFileParams(path=str(tmp_path / "a.py"), content="a", reason="ra"), write_tool)
+        assert tracker.changed_files == sorted(tracker.changed_files)
+        assert len(tracker.changed_files) == 2
 
-    def test_truncate_empty_text(self):
-        assert ToolCallReason._truncate_text("") == ""
+    def test_to_markdown_empty(self, tracker: ToolCallReason):
+        assert tracker.to_markdown() == ""
 
-    def test_truncate_line_based(self):
-        lines = [f"line {i}" for i in range(50)]
-        text = "\n".join(lines)
-        result = ToolCallReason._truncate_text(text, max_lines=24, edge_lines=12)
-        assert "... (26 lines omitted) ..." in result
-        assert "line 0" in result
-        assert "line 11" in result
-        assert "line 38" in result
-        assert "line 49" in result
-        # Middle lines should be omitted
-        assert "line 20" not in result
-        assert "line 30" not in result
+    def test_to_markdown_content(self, tracker: ToolCallReason, write_tool: MockWriteFileTool, tmp_path: Path):
+        tracker.add_tool_call_reason(MockWriteFileParams(path=str(tmp_path / "a.py"), content="a", reason="ra"), write_tool)
+        md = tracker.to_markdown()
+        assert md.startswith("Changed files:")
+        assert "a.py" in md
+        assert "WriteFile: ra" in md
 
-    def test_truncate_line_based_exactly_at_limit(self):
-        lines = [f"line {i}" for i in range(24)]
-        text = "\n".join(lines)
-        result = ToolCallReason._truncate_text(text, max_lines=24, edge_lines=12)
-        # Exactly at limit, should not truncate
-        assert "omitted" not in result
-        assert result == text
-
-    def test_truncate_line_based_one_over_limit(self):
-        lines = [f"line {i}" for i in range(25)]
-        text = "\n".join(lines)
-        result = ToolCallReason._truncate_text(text, max_lines=24, edge_lines=12)
-        assert "... (1 lines omitted) ..." in result
-
-    def test_truncate_character_based(self):
-        text = "x" * 2000
-        result = ToolCallReason._truncate_text(text, max_lines=100, edge_lines=50, max_chars=1500)
-        assert "... (500 characters omitted) ..." in result
-        assert len(result) < len(text) + 100  # significantly shorter
-
-    def test_truncate_character_based_exactly_at_limit(self):
-        text = "x" * 1500
-        result = ToolCallReason._truncate_text(text, max_lines=100, edge_lines=50, max_chars=1500)
-        assert "omitted" not in result
-        assert result == text
-
-    def test_truncate_long_single_line(self):
-        text = "a" * 3000
-        result = ToolCallReason._truncate_text(text, max_lines=24, edge_lines=12, max_chars=1500)
-        assert "... (1500 characters omitted) ..." in result
-        assert result.startswith("a" * 750)
-        assert result.endswith("a" * 750)
+    def test_to_markdown_multiple_records(self, tracker: ToolCallReason, write_tool: MockWriteFileTool, tmp_path: Path):
+        path = str(tmp_path / "a.py")
+        tracker.add_tool_call_reason(MockWriteFileParams(path=path, content="v1", reason="r1"), write_tool)
+        tracker.add_tool_call_reason(MockWriteFileParams(path=path, content="v2", reason="r2"), write_tool)
+        md = tracker.to_markdown()
+        assert "WriteFile: r1" in md
+        assert "WriteFile: r2" in md
 
 
 class TestToolCallReasonLifecycle:

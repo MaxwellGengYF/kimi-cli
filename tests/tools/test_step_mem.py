@@ -749,9 +749,9 @@ class TestStepMemoryLoadWithFiles:
         assert not result.is_error
         assert "Step history (1 entries)" in result.output
         assert "Tool call reasons for files:" in result.output
-        assert "File:" in result.output
+        assert path1 in result.output
         assert "create user model" in result.output
-        assert "class User:" in result.output
+        assert "class User:" not in result.output
         assert "Loaded 1 steps" in result.message
         assert "queried 1 files" in result.message
 
@@ -765,10 +765,12 @@ class TestStepMemoryLoadWithFiles:
         result = await step_memory_tool(Params(action="load", files=[path1, path2]))
 
         assert not result.is_error
+        assert path1 in result.output
+        assert path2 in result.output
         assert "create user model" in result.output
         assert "create view" in result.output
-        assert "class User:" in result.output
-        assert "def index():" in result.output
+        assert "class User:" not in result.output
+        assert "def index():" not in result.output
         assert "queried 2 files" in result.message
 
     async def test_load_with_files_no_tool_reasons(
@@ -782,7 +784,7 @@ class TestStepMemoryLoadWithFiles:
 
         assert not result.is_error
         assert "Step history (1 entries)" in result.output
-        assert "No record found for:" in result.output
+        assert "no record" in result.output
         assert "Loaded 1 steps" in result.message
         assert "queried 1 files" in result.message
 
@@ -813,8 +815,9 @@ class TestStepMemoryLoadWithFiles:
         assert not result.is_error
         assert "Step history" not in result.output
         assert "Tool call reasons for files:" in result.output
+        assert path1 in result.output
         assert "create user model" in result.output
-        assert "class User:" in result.output
+        assert "class User:" not in result.output
         assert "queried 1 files" in result.message
 
     async def test_load_with_files_empty_history_no_reasons(
@@ -827,4 +830,4 @@ class TestStepMemoryLoadWithFiles:
         assert not result.is_error
         # When files are queried but no steps exist, tool reasons are still returned
         assert "Tool call reasons for files:" in result.output
-        assert "No record found for:" in result.output
+        assert "no record" in result.output

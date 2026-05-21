@@ -22,6 +22,7 @@ class ToolCallReason:
 
     def __init__(self) -> None:
         self._records: dict[str, list[dict[str, str]]] = {}
+        self._latest_path: str | None = None
 
     def add_tool_call_reason(self, params: BaseModel, tool: CallableTool2[Any]) -> None:
         """Record a tool call reason for WriteFile or EditFile.
@@ -44,46 +45,8 @@ class ToolCallReason:
         path: str = str(Path(raw_path).resolve())
         record: dict[str, str] = {"tool_name": tool.name, "reason": reason}
 
-        if tool.name == "WriteFile":
-            record["content"] = getattr(params, "content", "")
-        elif tool.name == "EditFile":
-            edit: Any | None = getattr(params, "edit", None)
-            if isinstance(edit, list):
-                record["old"] = "\n".join(
-                    getattr(item, "old", "") for item in edit
-                )
-                record["content"] = "\n".join(
-                    getattr(item, "new", "") for item in edit
-                )
-            elif edit is not None:
-                record["old"] = getattr(edit, "old", "")
-                record["content"] = getattr(edit, "new", "")
-            else:
-                record["old"] = ""
-                record["content"] = ""
         self._records.setdefault(path, []).append(record)
-
-    @staticmethod
-    def _truncate_text(text: str, max_lines: int = 24, edge_lines: int = 12, max_chars: int = 1500) -> str:
-        if not text:
-            return text
-
-        lines = text.splitlines()
-
-        # Line-based truncation for long multi-line text
-        if len(lines) > max_lines:
-            omitted = len(lines) - 2 * edge_lines
-            head = "\n".join(lines[:edge_lines])
-            tail = "\n".join(lines[-edge_lines:])
-            return f"{head}\n... ({omitted} lines omitted) ...\n{tail}"
-
-        # Character-based truncation for long compact text
-        if len(text) > max_chars:
-            edge = max_chars // 2
-            omitted = len(text) - 2 * edge
-            return f"{text[:edge]}\n... ({omitted} characters omitted) ...\n{text[-edge:]}"
-
-        return text
+        self._latest_path = path
 
     def formatted_print(self, paths: list[str]) -> str:
         """Find the paths' changes and return them as a formatted string.
@@ -99,25 +62,61 @@ class ToolCallReason:
             abs_path = str(Path(path).resolve())
             records = self._records.get(abs_path)
             if not records:
-                lines.append(f"No record found for: {abs_path}")
+                lines.append(f"- {abs_path}: no record")
                 continue
 
-            lines.append(f"File: {abs_path}")
-            for idx, record in enumerate(records, start=1):
-                tool_name = record.get("tool_name", "Unknown")
-                reason = record.get("reason", "")
-                content = record.get("content", "")
-
-                lines.append(f"\n[Change #{idx}] Tool: {tool_name}")
+            parts: list[str] = []
+            for rec in records:
+                tool_name = rec.get("tool_name", "Unknown")
+                reason = rec.get("reason", "")
                 if reason:
-                    lines.append(f"Reason: {reason}")
-                if "old" in record:
-                    old = record["old"]
-                    lines.append("--- old ---")
-                    lines.append(self._truncate_text(old))
-                    lines.append("--- new ---")
-                lines.append(self._truncate_text(content))
+                    parts.append(f"{tool_name}: {reason}")
+                else:
+                    parts.append(tool_name)
+            lines.append(f"- {abs_path} ({', '.join(parts)})")
 
+        return "\n".join(lines)
+
+    @property
+    def changed_files(self) -> list[str]:
+        """Return a sorted list of absolute paths that have been recorded."""
+        return sorted(self._records.keys())
+
+    @property
+    def latest_path(self) -> str | None:
+        """Return the most recently added file path, or None if empty."""
+        return self._latest_path
+
+    def to_markdown(self, paths: list[str] | None = None, cwd: Path | None = None) -> str:
+        """Return a dense markdown representation of changed files.
+
+        Args:
+            paths: Optional list of paths to include. Defaults to all recorded paths.
+            cwd: Optional directory to make paths relative to.
+        """
+        if not self._records:
+            return ""
+        lines = ["Changed files:"]
+        target_paths = sorted(self._records.keys()) if paths is None else sorted(paths)
+        for path in target_paths:
+            records = self._records.get(path)
+            if not records:
+                continue
+            parts: list[str] = []
+            for rec in records:
+                tool_name = rec.get("tool_name", "Unknown")
+                reason = rec.get("reason", None)
+                if reason:
+                    parts.append(f"{tool_name}: {reason}")
+                else:
+                    parts.append(tool_name)
+            display_path = path
+            if cwd is not None:
+                try:
+                    display_path = str(Path(path).relative_to(cwd.resolve()))
+                except ValueError:
+                    display_path = path
+            lines.append(f"- {display_path} ({', '.join(parts)})")
         return "\n".join(lines)
 
     def clear(self) -> None:
