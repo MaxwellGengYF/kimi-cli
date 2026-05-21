@@ -374,10 +374,15 @@ class Agent:
     """The loaded agent."""
 
     name: str
-    system_prompt: str
+    system_prompt: str | Callable[[Runtime], str]
     toolset: Toolset
     runtime: Runtime
     """Each agent has its own runtime, which should be derived from its main agent."""
+
+    def get_system_prompt(self) -> str:
+        if callable(self.system_prompt):
+            return self.system_prompt(self.runtime)
+        return self.system_prompt
 
 
 async def load_agent(
@@ -403,9 +408,9 @@ async def load_agent(
     """
     logger.info("Loading agent: {agent_file}", agent_file=agent_file)
     agent_spec = load_agent_spec(agent_file)
-    custom_system_prompt : Callable[[BuiltinSystemPromptArgs], str] | None =  custom_arguments.get('custom_system_prompt', None)
+    custom_system_prompt = custom_arguments.get('custom_system_prompt', None)
     if custom_system_prompt is not None:
-        system_prompt: str = custom_system_prompt(runtime.builtin_args)
+        system_prompt: str | Callable[[Runtime], str] = custom_system_prompt
     else:
         system_prompt = _load_system_prompt(
             agent_spec.system_prompt_path,

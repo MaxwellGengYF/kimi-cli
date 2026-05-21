@@ -97,7 +97,7 @@ async def test_prepare_soul_restores_system_prompt_on_resume(runtime, monkeypatc
     builder = SubagentBuilder(runtime)
     soul, _ = await prepare_soul(spec, runtime, builder, runtime.subagent_store)
 
-    assert soul.agent.system_prompt == "old system prompt"
+    assert soul.agent.get_system_prompt() == "old system prompt"
 
 
 @pytest.mark.asyncio
@@ -112,7 +112,7 @@ async def test_prepare_soul_persists_system_prompt_on_first_run(runtime, monkeyp
     builder = SubagentBuilder(runtime)
     soul, prompt = await prepare_soul(spec, runtime, builder, runtime.subagent_store)
 
-    assert soul.agent.system_prompt == "fresh system prompt"
+    assert soul.agent.get_system_prompt() == "fresh system prompt"
     assert prompt == "do the work"
 
     # Verify it was persisted — a second restore should see it

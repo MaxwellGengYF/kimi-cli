@@ -325,7 +325,7 @@ async def test_background_agent_resume_restores_system_prompt_from_context(runti
         wire_file=None,
         runtime=None,
     ):
-        seen_prompts.append(soul.agent.system_prompt)
+        seen_prompts.append(soul.agent.get_system_prompt())
         await soul.context.append_message(
             Message(role="assistant", content=[TextPart(text="x" * 250)])
         )

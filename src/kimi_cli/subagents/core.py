@@ -65,7 +65,7 @@ async def prepare_soul(
     if context.system_prompt is not None:
         agent = replace(agent, system_prompt=context.system_prompt)
     else:
-        await context.write_system_prompt(agent.system_prompt)
+        await context.write_system_prompt(agent.get_system_prompt())
     if on_stage:
         on_stage("context_ready")
 

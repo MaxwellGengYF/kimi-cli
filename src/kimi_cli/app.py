@@ -324,7 +324,7 @@ class KimiCLI:
         if context.system_prompt is not None:
             agent = dataclasses.replace(agent, system_prompt=context.system_prompt)
         else:
-            await context.write_system_prompt(agent.system_prompt)
+            await context.write_system_prompt(agent.get_system_prompt())
 
         soul = KimiSoul(agent, context=context)
 

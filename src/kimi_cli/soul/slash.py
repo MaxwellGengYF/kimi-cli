@@ -82,7 +82,7 @@ async def clear(soul: KimiSoul, args: str):
     """Clear the context"""
     logger.info("Running `/clear`")
     await soul.context.clear()
-    await soul.context.write_system_prompt(soul.agent.system_prompt)
+    await soul.context.write_system_prompt(soul.agent.get_system_prompt())
     wire_send(TextPart(text="The context has been cleared."))
     snap = soul.status
     wire_send(

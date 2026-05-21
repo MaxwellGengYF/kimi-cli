@@ -14,7 +14,7 @@ from kimi_cli.soul.agent import Runtime, load_agent
 @pytest.mark.skipif(platform.system() == "Windows", reason="Skipping test on Windows")
 async def test_default_agent(runtime: Runtime):
     agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
-    assert agent.system_prompt.replace(
+    assert agent.get_system_prompt().replace(
         f"{runtime.builtin_args.KIMI_WORK_DIR}", "/path/to/work/dir"
     ) == snapshot(
         """\
@@ -251,9 +251,9 @@ At any time, you should be HELPFUL, CONCISE, and ACCURATE. Be thorough in your a
 async def test_default_agent_background_bash_guardrails(runtime: Runtime):
     agent = await load_agent(DEFAULT_AGENT_FILE, runtime, mcp_configs=[])
 
-    assert "the only task-management slash command is `/task`" in agent.system_prompt
+    assert "the only task-management slash command is `/task`" in agent.get_system_prompt()
     assert "Do not tell users to run `/task list`, `/task output`, `/task stop`, `/tasks`" in (
-        agent.system_prompt
+        agent.get_system_prompt()
     )
 
     tool_names = [tool.name for tool in agent.toolset.tools]

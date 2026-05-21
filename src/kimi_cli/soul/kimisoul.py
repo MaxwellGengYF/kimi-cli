@@ -1091,7 +1091,7 @@ class KimiSoul:
             # run an LLM step (may be interrupted)
             return await kosong.step(
                 chat_provider,
-                self._agent.system_prompt,
+                self._agent.get_system_prompt(),
                 self._agent.toolset,
                 effective_history,
                 on_message_part=wire_send,
@@ -1333,7 +1333,7 @@ class KimiSoul:
             )
             raise
         await self._context.clear()
-        await self._context.write_system_prompt(self._agent.system_prompt)
+        await self._context.write_system_prompt(self._agent.get_system_prompt())
         await self._checkpoint()
         await self._context.append_message(compaction_result.messages)
         estimated_token_count = compaction_result.estimated_token_count
