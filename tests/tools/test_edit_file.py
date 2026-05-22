@@ -277,7 +277,7 @@ async def test_replace_relative_path_outside_workspace(
     assert "absolute path" in result.message.lower()
 
 
-async def test_replace_approval_rejected(runtime: Runtime, temp_work_dir: KaosPath):
+async def test_replace_approval_rejected(runtime: Runtime, session: Session, temp_work_dir: KaosPath):
     """Test that a rejected approval returns a ToolRejectedError."""
     file_path = temp_work_dir / "test.txt"
     await file_path.write_text("old content")
@@ -287,7 +287,7 @@ async def test_replace_approval_rejected(runtime: Runtime, temp_work_dir: KaosPa
     approval.request = cast(Any, request_mock)
 
     with tool_call_context("EditFile"):
-        tool = EditFile(runtime, approval)
+        tool = EditFile(runtime, approval, session)
         result = await tool(
             Params(path=str(file_path), edit=Edit(old="old", new="new"))
         )
@@ -302,12 +302,13 @@ async def test_replace_invalid_json(edit_file_tool: EditFile, temp_work_dir: Kao
     file_path = temp_work_dir / "test.json"
     await file_path.write_text('{"key": "value"}')
 
-    result = await edit_file_tool(
-        Params(
-            path=str(file_path),
-            edit=Edit(old='"key": "value"', new='"key": broken'),
+    with patch("json_repair.repair_json", return_value=""):
+        result = await edit_file_tool(
+            Params(
+                path=str(file_path),
+                edit=Edit(old='"key": "value"', new='"key": broken'),
+            )
         )
-    )
 
     assert result.is_error
     assert "successfully edited" in result.message
@@ -408,10 +409,10 @@ async def test_replace_all_no_match(edit_file_tool: EditFile, temp_work_dir: Kao
     assert "No replacements were made" in result.message
 
 
-async def test_replace_bind_plan_mode(runtime: Runtime, temp_work_dir: KaosPath):
+async def test_replace_bind_plan_mode(runtime: Runtime, session: Session, temp_work_dir: KaosPath):
     """Test bind_plan_mode sets the checker and getter correctly."""
     with tool_call_context("EditFile"):
-        tool = EditFile(runtime, Approval(yolo=True))
+        tool = EditFile(runtime, Approval(yolo=True), session)
         checker = lambda: False
         getter = lambda: None
         tool.bind_plan_mode(checker, getter)
@@ -419,13 +420,13 @@ async def test_replace_bind_plan_mode(runtime: Runtime, temp_work_dir: KaosPath)
         assert tool._plan_file_path_getter is getter
 
 
-async def test_replace_oserror_on_write(runtime: Runtime, temp_work_dir: KaosPath):
+async def test_replace_oserror_on_write(runtime: Runtime, session: Session, temp_work_dir: KaosPath):
     """Test that an OSError during write is handled gracefully."""
     file_path = temp_work_dir / "test.txt"
     await file_path.write_text("old content")
 
     with tool_call_context("EditFile"):
-        tool = EditFile(runtime, Approval(yolo=True))
+        tool = EditFile(runtime, Approval(yolo=True), session)
         with patch("kaos.path.KaosPath.write_text", side_effect=OSError("disk full")):
             result = await tool(
                 Params(path=str(file_path), edit=Edit(old="old", new="new"))
@@ -436,13 +437,13 @@ async def test_replace_oserror_on_write(runtime: Runtime, temp_work_dir: KaosPat
     assert "disk full" in result.message
 
 
-async def test_replace_memory_error_propagated(runtime: Runtime, temp_work_dir: KaosPath):
+async def test_replace_memory_error_propagated(runtime: Runtime, session: Session, temp_work_dir: KaosPath):
     """Test that MemoryError is propagated and not caught."""
     file_path = temp_work_dir / "test.txt"
     await file_path.write_text("old content")
 
     with tool_call_context("EditFile"):
-        tool = EditFile(runtime, Approval(yolo=True))
+        tool = EditFile(runtime, Approval(yolo=True), session)
         with patch(
             "kaos.path.KaosPath.read_text", side_effect=MemoryError("out of memory")
         ):
@@ -458,48 +459,54 @@ async def test_replace_memory_error_propagated(runtime: Runtime, temp_work_dir: 
 def test_apply_edit_single_replacement():
     """Test _apply_edit with a single replacement."""
     tool = object.__new__(EditFile)
-    content, count = tool._apply_edit("hello world", Edit(old="world", new="universe"))
+    content, count, suggestion = tool._apply_edit("hello world", Edit(old="world", new="universe"))
     assert content == "hello universe"
     assert count == 1
+    assert suggestion is None
 
 
 def test_apply_edit_replace_all():
     """Test _apply_edit with replace_all."""
     tool = object.__new__(EditFile)
-    content, count = tool._apply_edit(
+    content, count, suggestion = tool._apply_edit(
         "a b a c a", Edit(old="a", new="X", replace_all=True)
     )
     assert content == "X b X c X"
     assert count == 3
+    assert suggestion is None
 
 
 def test_apply_edit_empty_old():
     """Test _apply_edit with empty old string returns no changes."""
     tool = object.__new__(EditFile)
-    content, count = tool._apply_edit("hello", Edit(old="", new="X"))
+    content, count, suggestion = tool._apply_edit("hello", Edit(old="", new="X"))
     assert content == "hello"
     assert count == 0
+    assert suggestion is None
 
 
 def test_apply_edit_old_equals_new():
     """Test _apply_edit when old equals new returns no changes."""
     tool = object.__new__(EditFile)
-    content, count = tool._apply_edit("hello", Edit(old="hello", new="hello"))
+    content, count, suggestion = tool._apply_edit("hello", Edit(old="hello", new="hello"))
     assert content == "hello"
     assert count == 0
+    assert suggestion is None
 
 
 def test_apply_edit_no_match():
     """Test _apply_edit when old string is not found."""
     tool = object.__new__(EditFile)
-    content, count = tool._apply_edit("hello", Edit(old="xyz", new="abc"))
+    content, count, suggestion = tool._apply_edit("hello", Edit(old="xyz", new="abc"))
     assert content == "hello"
     assert count == 0
+    assert suggestion is None
 
 
 def test_apply_edit_replace_all_no_match():
     """Test _apply_edit with replace_all when old string is not found."""
     tool = object.__new__(EditFile)
-    content, count = tool._apply_edit("hello", Edit(old="xyz", new="abc", replace_all=True))
+    content, count, suggestion = tool._apply_edit("hello", Edit(old="xyz", new="abc", replace_all=True))
     assert content == "hello"
     assert count == 0
+    assert suggestion is None

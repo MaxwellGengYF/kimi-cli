@@ -1,73 +1,60 @@
-
 ---
 
-The above is a list of messages in an agent conversation. You are now given a task to compact this conversation context according to specific priorities and rules.
+Compact the above agent conversation context according to the following priorities and rules.
 
-**Compression Priorities (in order):**
-1. **Current Task State**: What is being worked on RIGHT NOW
-2. **Errors & Solutions**: All encountered errors and their resolutions
-3. **Code Evolution**: Final working versions only (remove intermediate attempts)
-4. **System Context**: Project structure, dependencies, environment setup
-5. **Design Decisions**: Architectural choices and their rationale
-6. **TODO Items**: Unfinished tasks and known issues
+**Priorities (ordered):**
+1. **Current Task State** — what is being worked on right now
+2. **Errors & Solutions** — all errors encountered and how they were resolved
+3. **Code Evolution** — final working versions only (drop intermediate attempts)
+4. **System Context** — project structure, dependencies, environment setup
+5. **Design Decisions** — architectural choices and rationale
+6. **TODO Items** — unfinished tasks and known issues
 
-**Compression Rules:**
-- MUST KEEP: Error messages, stack traces, working solutions, current task
-- MERGE: Similar discussions into single summary points
-- REMOVE: Redundant explanations, failed attempts (keep lessons learned), verbose comments
-- CONDENSE: Long code blocks → keep signatures + key logic only
+**Rules:**
+- **Keep:** error messages, stack traces, working solutions, current task
+- **Merge:** similar discussions into single summary points
+- **Remove:** redundant explanations, failed attempts (retain lessons learned), verbose comments
+- **Condense:** long code blocks → signatures + key logic only
 
 **Special Handling:**
-- For code: Keep full version if < 20 lines, otherwise keep signature + key logic
-- For errors: Keep full error message + final solution
-- For discussions: Extract decisions and action items only
+- **Code:** keep full version if < 20 lines; otherwise keep signature + key logic
+- **Errors:** keep full error message + final solution
+- **Discussions:** extract decisions and action items only
 
-**Required Output Structure:**
+**Output Structure:**
 
+```xml
 <current_focus>
 [What we're working on now]
 </current_focus>
 
 <environment>
 - [Key setup/config points]
-- ...more...
 </environment>
 
 <completed_tasks>
 - [Task]: [Brief outcome]
-- ...more...
 </completed_tasks>
 
 <active_issues>
 - [Issue]: [Status/Next steps]
-- ...more...
 </active_issues>
 
 <code_state>
-
 <file>
 [filename]
 
-**Summary:**
-[What this code file does]
+**Summary:** [What this file does]
 
 **Key elements:**
 - [Important functions/classes]
-- ...more...
 
 **Latest version:**
-[Critical code snippets in this file]
+[Critical code snippets]
 </file>
-
-<file>
-[filename]
-...Similar as above...
-</file>
-
-...more files...
 </code_state>
 
 <important_context>
-- [Any crucial information not covered above]
-- ...more...
+- [Crucial information not covered above]
 </important_context>
+```

@@ -84,6 +84,19 @@ class WriteFile(CallableTool2[Params]):
                 ),
                 False,
             )
+
+        protected_paths = self._session.custom_config.get("config_json", {}).get("protected_write_paths")
+        if protected_paths:
+            from .utils import check_path_protected
+            if matched := check_path_protected(resolved_path, protected_paths, self._work_dir):
+                return (
+                    ToolError(
+                        message=f"Writing to `{path}` is blocked by protected path rule: `{matched}`.",
+                        brief="Protected path",
+                    ),
+                    False,
+                )
+
         return None, inside
 
     @override

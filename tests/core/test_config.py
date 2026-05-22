@@ -31,11 +31,17 @@ def test_default_config_dump():
             "models": {},
             "providers": {},
             "loop_control": {
-                "max_steps_per_turn": 1000,
+                "max_steps_per_turn": 5000,
                 "max_retries_per_step": 3,
                 "max_ralph_iterations": 0,
                 "reserved_context_size": 50000,
                 "compaction_trigger_ratio": 0.85,
+                "max_system_prompt_tokens": 20000,
+                "max_preserved_messages": 2,
+                "min_preserved_messages": 1,
+                "adaptive_preserve_enabled": True,
+                "auto_retrieve_history": False,
+                "auto_retrieve_history_threshold": 5.0,
             },
             "background": {
                 "max_running_tasks": 4,
@@ -58,8 +64,13 @@ def test_default_config_dump():
             "hooks": [],
             "merge_all_available_skills": True,
             "extra_skill_dirs": [],
-            "telemetry": True,
+            "telemetry": False,
             "skip_afk_prompt_injection": False,
+            "max_tokens": 128000,
+            "temperature": None,
+            "top_p": None,
+            "top_k": None,
+            "thinking_effort": None,
         }
     )
 

@@ -72,6 +72,7 @@ class ReadFile(CallableTool2[Params]):
 
     def __init__(self, runtime: Runtime, session: Session, vfs: VFS | None = None) -> None:
         self.session_id = session.id
+        self._session = session
         description = load_desc(
             Path(__file__).parent / "read.md",
             {
@@ -103,6 +104,15 @@ class ReadFile(CallableTool2[Params]):
                 ),
                 brief="Invalid path",
             )
+
+        protected_paths = self._session.custom_config.get("config_json", {}).get("protected_read_paths")
+        if protected_paths:
+            from .utils import check_path_protected
+            if matched := check_path_protected(resolved_path, protected_paths, self._work_dir):
+                return ToolError(
+                    message=f"Reading `{path}` is blocked by protected path rule: `{matched}`.",
+                    brief="Protected path",
+                )
         return None
 
     @override

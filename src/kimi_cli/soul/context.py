@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,7 +19,12 @@ from kimi_cli.utils.path import next_available_rotation
 
 
 class Context:
-    def __init__(self, file_backend: Path):
+    def __init__(
+        self,
+        file_backend: Path,
+        on_append: Callable[[Sequence[Message]], None] | None = None,
+        model_name: str | None = None,
+    ):
         self._file_backend = file_backend
         self._history: list[Message] = []
         self._token_count: int = 0
@@ -27,6 +32,8 @@ class Context:
         self._next_checkpoint_id: int = 0
         """The ID of the next checkpoint, starting from 0, incremented after each checkpoint."""
         self._system_prompt: str | None = None
+        self._on_append = on_append
+        self._model_name = model_name
 
     async def restore(self) -> bool:
         logger.debug("Restoring context from file: {file_backend}", file_backend=self._file_backend)
@@ -62,7 +69,7 @@ class Context:
                     line_no=line_no,
                 )
 
-        self._pending_token_estimate = estimate_text_tokens(messages_after_last_usage)
+        self._pending_token_estimate = estimate_text_tokens(messages_after_last_usage, model=self._model_name)
         return True
 
     @property
@@ -88,6 +95,14 @@ class Context:
     @property
     def file_backend(self) -> Path:
         return self._file_backend
+
+    @property
+    def model_name(self) -> str | None:
+        return self._model_name
+
+    @model_name.setter
+    def model_name(self, value: str | None) -> None:
+        self._model_name = value
 
     async def write_system_prompt(self, prompt: str) -> None:
         """Write the system prompt as the first record of the context file.
@@ -198,7 +213,7 @@ class Context:
                 if keep_line:
                     await new_file.write(line)
 
-        self._pending_token_estimate = estimate_text_tokens(messages_after_last_usage)
+        self._pending_token_estimate = estimate_text_tokens(messages_after_last_usage, model=self._model_name)
 
     async def clear(self):
         """
@@ -234,7 +249,10 @@ class Context:
         logger.debug("Appending message(s) to context: {message}", message=message)
         messages = [message] if isinstance(message, Message) else message
         self._history.extend(messages)
-        self._pending_token_estimate += estimate_text_tokens(messages)
+        self._pending_token_estimate += estimate_text_tokens(messages, model=self._model_name)
+
+        if self._on_append is not None:
+            self._on_append(messages)
 
         async with aiofiles.open(self._file_backend, "a", encoding="utf-8") as f:
             for message in messages:

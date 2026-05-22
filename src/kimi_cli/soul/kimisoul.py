@@ -49,6 +49,7 @@ from kimi_cli.soul.agent import Agent, Runtime
 from kimi_cli.soul.compaction import (
     CompactionResult,
     SimpleCompaction,
+    adaptive_preserve_depth,
     estimate_text_tokens,
     should_auto_compact,
 )
@@ -175,9 +176,44 @@ class KimiSoul:
         self._runtime = agent.runtime
         self._denwa_renji = agent.runtime.denwa_renji
         self._approval = agent.runtime.approval
-        self._context = context
         self._loop_control = agent.runtime.config.loop_control
-        self._compaction = SimpleCompaction()  # TODO: maybe configurable and composable
+
+        # Phase 3: History index for semantic retrieval over past turns
+        # Lazy import to avoid circular dependency with kimix.retrieval
+        from kimi_cli.soul.history_index import HistoryIndex
+        from kimi_cli.tools.context_retrieval import ContextRetrieval
+
+        history_index_path = (
+            agent.runtime.session.dir / "history_index" / f"{agent.runtime.session.id}.json"
+        )
+        self._history_index = HistoryIndex(persist_path=history_index_path)
+        self._history_index.load()
+
+        # Wire context appends into the history indexer
+        def _on_append(msgs: Sequence[Message]) -> None:
+            self._history_index.index_messages(msgs)
+
+        context._on_append = _on_append
+        self._context = context
+        self._context.model_name = self.model_name
+
+        if self._loop_control.adaptive_preserve_enabled:
+            self._compaction = SimpleCompaction(
+                max_preserved_messages=self._loop_control.max_preserved_messages,
+                preserve_depth=lambda msgs: adaptive_preserve_depth(
+                    msgs,
+                    min_preserved=self._loop_control.min_preserved_messages,
+                    max_preserved=self._loop_control.max_preserved_messages,
+                ),
+            )
+        else:
+            self._compaction = SimpleCompaction(
+                max_preserved_messages=self._loop_control.max_preserved_messages,
+            )
+
+        # Register ContextRetrieval tool if the toolset supports it
+        if isinstance(agent.toolset, KimiToolset):
+            agent.toolset.add(ContextRetrieval(self._history_index))
 
         for tool in agent.toolset.tools:
             if tool.name == SendDMail_NAME:
@@ -191,6 +227,8 @@ class KimiSoul:
         self._plan_mode: bool = self._runtime.session.state.plan_mode
         self._plan_session_id: str | None = self._runtime.session.state.plan_session_id
         self._current_turn_id: str = ""
+        self._current_turn_user_text: str = ""
+        self._last_auto_retrieved_turn_id: int | None = None
         # Pre-warm slug cache so the persisted slug survives process restarts
         if self._plan_session_id is not None and self._runtime.session.state.plan_slug is not None:
             from kimi_cli.tools.plan.heroes import seed_slug_cache
@@ -294,6 +332,55 @@ class KimiSoul:
                     exc_info=True,
                 )
         return injections
+
+    async def _maybe_auto_retrieve_history(self) -> DynamicInjection | None:
+        """Auto-inject a relevant archived turn if the current query matches history.
+
+        Only fires on the first step of a turn, when ``auto_retrieve_history`` is
+        enabled, the user query is non-trivial, and a compacted turn scores above
+        the configured BM25 threshold.
+        """
+        if not self._loop_control.auto_retrieve_history:
+            return None
+        if self._current_step_no != 1:
+            return None
+        query = self._current_turn_user_text
+        if len(query) < 10:
+            return None
+
+        try:
+            results = self._history_index.search(query, top_k=3)
+        except Exception:
+            logger.debug("History index search failed during auto-retrieval", exc_info=True)
+            return None
+
+        # Filter to compacted/archived turns only and pick the best match
+        compacted = [r for r in results if r.get("is_compacted")]
+        if not compacted:
+            return None
+
+        best = compacted[0]
+        score = best.get("score", 0.0)
+        if score < self._loop_control.auto_retrieve_history_threshold:
+            return None
+
+        turn_id = best.get("turn_id")
+        if turn_id == self._last_auto_retrieved_turn_id:
+            return None
+
+        self._last_auto_retrieved_turn_id = turn_id
+        role = best.get("role", "unknown")
+        text = best.get("text", "")
+        citation = (
+            f"[Auto-retrieved from past conversation — relevance: {score:.2f}]\n"
+            f"> **{role}**\n> {text.replace(chr(10), chr(10) + '> ')}"
+        )
+        logger.debug(
+            "Auto-retrieved history turn {turn_id} with score {score}",
+            turn_id=turn_id,
+            score=score,
+        )
+        return DynamicInjection(content=citation)
 
     async def _notify_injection_providers_compacted(self) -> None:
         """Notify all injection providers that the context has been compacted.
@@ -726,6 +813,7 @@ class KimiSoul:
             raise LLMNotSupported(self._runtime.llm, list(missing_caps))
 
         self._current_turn_id = uuid.uuid4().hex
+        self._current_turn_user_text = user_message.extract_text(" ").strip()
         self._last_tool_calls = []
         await self._checkpoint()  # this creates the checkpoint 0 on first run
         await self._context.append_message(user_message)
@@ -1060,7 +1148,10 @@ class KimiSoul:
         # ═══════════════════════════════════════════════════════════════════════
         # 2e.2. DYNAMIC INJECTION
         # ═══════════════════════════════════════════════════════════════════════
+        auto_retrieval_injection = await self._maybe_auto_retrieve_history()
         injections = await self._collect_injections()
+        if auto_retrieval_injection is not None:
+            injections.insert(0, auto_retrieval_injection)
         if injections:
             combined_reminders = "\n".join(system_reminder(inj.content).text for inj in injections)
             await self._context.append_message(
@@ -1332,6 +1423,9 @@ class KimiSoul:
                 error_type=type(_compact_exc).__name__,
             )
             raise
+        # Mark all indexed turns as archived before clearing context
+        self._history_index.mark_compacted()
+        self._history_index.save()
         await self._context.clear()
         await self._context.write_system_prompt(self._agent.get_system_prompt(is_compacting=True))
         await self._checkpoint()
@@ -1352,7 +1446,12 @@ class KimiSoul:
                     ],
                 )
                 await self._context.append_message(active_task_message)
-                estimated_token_count += estimate_text_tokens([active_task_message])
+                model_name = (
+                    self._runtime.llm.model_config.model
+                    if self._runtime.llm and self._runtime.llm.model_config
+                    else None
+                )
+                estimated_token_count += estimate_text_tokens([active_task_message], model=model_name)
 
         # Estimate token count so context_usage is not reported as 0%
         await self._context.update_token_count(estimated_token_count)

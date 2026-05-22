@@ -280,3 +280,36 @@ async def resolve_vfs(path_str: str, vfs: VFS | None, *, for_write: bool = False
     else:
         real = vfs.translate_path(Path(str(p)))
     return KaosPath.unsafe_from_local_path(real)
+
+
+def check_path_protected(
+    path: KaosPath,
+    protected_paths: list[str] | None,
+    work_dir: KaosPath,
+) -> str | None:
+    """Check if *path* matches any protected path pattern.
+
+    Returns the matching pattern string, or ``None`` if the path is not protected.
+    """
+    if not protected_paths:
+        return None
+
+    resolved = path.expanduser().canonical()
+
+    for pattern in protected_paths:
+        if not isinstance(pattern, str) or not pattern:
+            continue
+
+        pat_path = KaosPath(pattern).expanduser()
+        if not pat_path.is_absolute():
+            pat_path = (work_dir / pat_path).canonical()
+        else:
+            pat_path = pat_path.canonical()
+
+        try:
+            PurePath(str(resolved)).relative_to(str(pat_path))
+        except ValueError:
+            continue
+        return pattern
+
+    return None

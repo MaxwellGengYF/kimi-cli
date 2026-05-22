@@ -5,6 +5,7 @@ from stat import S_ISREG
 from typing import override
 
 import json_repair
+from rapidfuzz import fuzz, process
 
 from kaos.path import KaosPath
 from kosong.tooling import CallableTool2, ToolError, ToolReturnValue
@@ -90,24 +91,170 @@ class EditFile(CallableTool2[Params]):
                 ),
                 False,
             )
+        protected_paths = self._session.custom_config.get("config_json", {}).get("protected_write_paths")
+        if protected_paths:
+            from .utils import check_path_protected
+            if matched := check_path_protected(resolved_path, protected_paths, self._work_dir):
+                return (
+                    ToolError(
+                        message=f"Editing `{path}` is blocked by protected path rule: `{matched}`.",
+                        brief="Protected path",
+                    ),
+                    False,
+                )
         return None, inside
 
-    def _apply_edit(self, content: str, edit: Edit) -> tuple[str, int]:
-        """Apply a single edit to the content and return (new_content, replacements_made)."""
+    def _normalize_line_endings(self, text: str) -> str:
+        """Normalize \\r\\n to \\n for comparison."""
+        return text.replace("\r\n", "\n")
+
+    def _find_similar(self, target: str, content: str, cutoff: float = 75.0) -> str | None:
+        """Find the most similar line or chunk in content to target."""
+        norm_target = self._normalize_line_endings(target)
+        norm_content = self._normalize_line_endings(content)
+        lines = norm_content.splitlines()
+
+        # Try line-level matching first
+        result = process.extractOne(norm_target, lines, scorer=fuzz.ratio)
+        if result and result[1] >= cutoff:
+            return result[0]
+
+        # Fallback: sliding windows of similar line count for multi-line targets
+        target_lines = norm_target.splitlines()
+        target_line_count = len(target_lines)
+        if target_line_count > 1 and len(lines) >= target_line_count:
+            windows = []
+            for i in range(len(lines) - target_line_count + 1):
+                window = "\n".join(lines[i : i + target_line_count])
+                windows.append(window)
+            if windows:
+                result = process.extractOne(norm_target, windows, scorer=fuzz.ratio)
+                if result and result[1] >= cutoff:
+                    return result[0]
+
+        # Fallback: single-line targets, try all lines even if length differs
+        if target_line_count == 1 and lines:
+            result = process.extractOne(norm_target, lines, scorer=fuzz.ratio)
+            if result and result[1] >= cutoff:
+                return result[0]
+
+        return None
+
+    def _try_strip_match(
+        self, content: str, old: str, new: str
+    ) -> str | None:
+        """Try to find *old* inside any line of *content* ignoring leading/trailing whitespace.
+
+        Returns the updated content with the first such occurrence replaced, or None.
+        """
+        old_stripped = old.strip()
+        if not old_stripped:
+            return None
+
+        # Search line-by-line so we can map back to the original line text
+        for line in content.splitlines(keepends=True):
+            line_core = line.rstrip("\n").rstrip("\r")
+            idx = line_core.find(old_stripped)
+            if idx != -1:
+                # Rebuild the line: preserve prefix/suffix whitespace around the match
+                prefix = line_core[:idx]
+                suffix = line_core[idx + len(old_stripped) :]
+                # Keep original line ending
+                ending = ""
+                if line.endswith("\r\n"):
+                    ending = "\r\n"
+                elif line.endswith("\n"):
+                    ending = "\n"
+                elif line.endswith("\r"):
+                    ending = "\r"
+                new_line = prefix + new + suffix + ending
+                # Replace only the first occurrence of this exact line in content
+                return content.replace(line, new_line, 1)
+        return None
+
+    def _find_best_fuzzy_match(
+        self, target: str, content: str, cutoff: float = 75.0
+    ) -> tuple[str, float] | None:
+        """Find the best fuzzy match of target in content.
+
+        Returns the matched original text and similarity score, or None.
+        """
+        norm_target = self._normalize_line_endings(target)
+        norm_content = self._normalize_line_endings(content)
+
+        best_score = 0.0
+        best_original = None
+
+        target_lines = norm_target.splitlines()
+        target_line_count = len(target_lines)
+
+        # Split original content into lines (without line endings)
+        original_lines = content.splitlines()
+        norm_lines = norm_content.splitlines()
+
+        if target_line_count == 1:
+            for orig_line, norm_line in zip(original_lines, norm_lines):
+                score = fuzz.ratio(norm_target, norm_line)
+                if score > best_score:
+                    best_score = score
+                    best_original = orig_line
+        else:
+            for i in range(len(norm_lines) - target_line_count + 1):
+                window = "\n".join(norm_lines[i : i + target_line_count])
+                score = fuzz.ratio(norm_target, window)
+                if score > best_score:
+                    best_score = score
+                    best_original = "\n".join(
+                        original_lines[i : i + target_line_count]
+                    )
+
+        if best_score >= cutoff:
+            return best_original, best_score
+
+        return None
+
+    def _apply_edit(self, content: str, edit: Edit) -> tuple[str, int, str | None]:
+        """Apply a single edit to the content.
+
+        Returns (new_content, replacements_made, suggestion_or_None).
+        """
         if not edit.old or edit.old == edit.new:
-            return content, 0
+            return content, 0, None
+
+        norm_content = self._normalize_line_endings(content)
+        norm_old = self._normalize_line_endings(edit.old)
+        norm_new = self._normalize_line_endings(edit.new)
 
         if edit.replace_all:
-            count = content.count(edit.old)
+            count = norm_content.count(norm_old)
             if count == 0:
-                return content, 0
-            return content.replace(edit.old, edit.new), count
+                suggestion = self._find_similar(edit.old, content)
+                return content, 0, suggestion
+            return norm_content.replace(norm_old, norm_new), count, None
 
-        # Single replacement
-        idx = content.find(edit.old)
-        if idx == -1:
-            return content, 0
-        return content.replace(edit.old, edit.new, 1), 1
+        # Single replacement with normalized line endings
+        idx = norm_content.find(norm_old)
+        if idx != -1:
+            return norm_content.replace(norm_old, norm_new, 1), 1, None
+
+        # Exact match failed — try strip match (ignores leading/trailing spaces)
+        stripped = self._try_strip_match(content, edit.old, edit.new)
+        if stripped is not None:
+            return stripped, 1, None
+
+        # Strip match failed — try fuzzy match
+        fuzzy = self._find_best_fuzzy_match(edit.old, content)
+        if fuzzy is not None:
+            matched_text, score = fuzzy
+            # Replace in normalized content so line endings stay consistent
+            new_content = norm_content.replace(
+                self._normalize_line_endings(matched_text), norm_new, 1
+            )
+            return new_content, 1, None
+
+        # No match at all — return suggestion for error message
+        suggestion = self._find_similar(edit.old, content)
+        return content, 0, suggestion
 
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
@@ -167,20 +314,26 @@ class EditFile(CallableTool2[Params]):
             original_content = content
             edits = [params.edit] if isinstance(params.edit, Edit) else params.edit
 
-            def _work() -> tuple[str, int]:
+            def _work() -> tuple[str, int, str | None]:
                 text = content
                 total = 0
+                last_suggestion = None
                 for edit in edits:
-                    text, n = self._apply_edit(text, edit)
+                    text, n, suggestion = self._apply_edit(text, edit)
                     total += n
-                return text, total
+                    if suggestion:
+                        last_suggestion = suggestion
+                return text, total, last_suggestion
 
-            new_content, total_replacements = await asyncio.to_thread(_work)
+            new_content, total_replacements, suggestion = await asyncio.to_thread(_work)
 
             # Check if any changes were made
             if new_content == original_content:
+                msg = "No replacements were made. The old string was not found in the file."
+                if suggestion:
+                    msg += f"\n\nDid you mean:\n  {suggestion}"
                 return ToolError(
-                    message="No replacements were made. The old string was not found in the file.",
+                    message=msg,
                     brief="No replacements made",
                 )
 

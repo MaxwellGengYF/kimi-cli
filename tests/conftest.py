@@ -321,10 +321,10 @@ def write_file_tool(runtime: Runtime, approval: Approval) -> Generator[WriteFile
 
 
 @pytest.fixture
-def edit_file_tool(runtime: Runtime, approval: Approval) -> Generator[EditFile]:
+def edit_file_tool(runtime: Runtime, approval: Approval, session: Session) -> Generator[EditFile]:
     """Create a EditFile tool instance."""
     with tool_call_context("EditFile"):
-        yield EditFile(runtime, approval)
+        yield EditFile(runtime, approval, session)
 
 
 @pytest.fixture

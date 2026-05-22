@@ -55,15 +55,14 @@ def test_prepare_builds_compact_message_and_preserves_tail():
 
     result = SimpleCompaction(max_preserved_messages=2).prepare(messages)
 
+    # Phase 6: first message (system) is always preserved
     assert result.compact_message == snapshot(
         Message(
             role="user",
             content=[
-                TextPart(text="## Message 1\nRole: system\nContent:\n"),
-                TextPart(text="System note"),
-                TextPart(text="## Message 2\nRole: user\nContent:\n"),
+                TextPart(text="## Message 1\nRole: user\nContent:\n"),
                 TextPart(text="Old question"),
-                TextPart(text="## Message 3\nRole: assistant\nContent:\n"),
+                TextPart(text="## Message 2\nRole: assistant\nContent:\n"),
                 TextPart(text="Old answer"),
                 TextPart(text="\n" + prompts.COMPACT),
             ],
@@ -71,6 +70,7 @@ def test_prepare_builds_compact_message_and_preserves_tail():
     )
     assert result.to_preserve == snapshot(
         [
+            Message(role="system", content=[TextPart(text="System note")]),
             Message(role="user", content=[TextPart(text="Latest question")]),
             Message(role="assistant", content=[TextPart(text="Latest answer")]),
         ]
@@ -224,7 +224,9 @@ def test_prepare_only_keeps_text_parts_in_compaction():
     Fixes: https://github.com/MoonshotAI/kimi-cli/issues/1395
     Fixes: https://github.com/MoonshotAI/kimi-cli/issues/1390
     """
+    # Phase 6: prepend a system message so the media-rich user msg stays in to_compact
     messages = [
+        Message(role="system", content=[TextPart(text="System prompt")]),
         Message(
             role="user",
             content=[
@@ -271,6 +273,62 @@ def test_prepare_preserves_media_parts_in_recent_messages():
 
     result = SimpleCompaction(max_preserved_messages=2).prepare(messages)
 
-    # Preserved messages should keep their media parts intact
-    preserved_user_msg = result.to_preserve[0]
-    assert any(isinstance(p, VideoURLPart) for p in preserved_user_msg.content)
+    # Phase 6: first message is prepended, so video is in to_preserve[1]
+    # Find the preserved message that contains the video part
+    video_msg = None
+    for msg in result.to_preserve:
+        if any(isinstance(p, VideoURLPart) for p in msg.content):
+            video_msg = msg
+            break
+    assert video_msg is not None, "Expected a preserved message with VideoURLPart"
+
+
+def test_prepare_selects_cascade_prompt_at_depth_3():
+    """When 3+ messages in to_compact are already compaction summaries, prepare()
+    should select the COMPACT_CASCADE prompt and report cascade_depth >= 3."""
+    from kimi_cli.soul.message import system
+
+    summary_prefix = "Previous context has been compacted. Here is the compaction output:"
+    messages = [
+        Message(role="user", content=[TextPart(text="Original request")]),
+        Message(role="user", content=[system(summary_prefix), TextPart(text="summary 1")]),
+        Message(role="user", content=[system(summary_prefix), TextPart(text="summary 2")]),
+        Message(role="user", content=[system(summary_prefix), TextPart(text="summary 3")]),
+        Message(role="user", content=[TextPart(text="Latest question")]),
+        Message(role="assistant", content=[TextPart(text="Latest answer")]),
+    ]
+
+    result = SimpleCompaction(max_preserved_messages=2).prepare(messages)
+
+    # Original request is preserved by Phase 6; Latest Q+A are preserved by tail.
+    # to_compact should contain the 3 summary messages.
+    assert result.cascade_depth >= 3
+    assert result.compact_message is not None
+    parts = result.compact_message.content
+    last_part = parts[-1]
+    assert isinstance(last_part, TextPart)
+    assert prompts.COMPACT_CASCADE in last_part.text
+
+
+def test_prepare_selects_normal_prompt_below_depth_3():
+    """When fewer than 3 messages are compaction summaries, prepare() should select
+    the normal COMPACT prompt."""
+    from kimi_cli.soul.message import system
+
+    summary_prefix = "Previous context has been compacted. Here is the compaction output:"
+    messages = [
+        Message(role="user", content=[system(summary_prefix), TextPart(text="summary 1")]),
+        Message(role="assistant", content=[TextPart(text="ok")]),
+        Message(role="user", content=[TextPart(text="Latest question")]),
+        Message(role="assistant", content=[TextPart(text="Latest answer")]),
+    ]
+
+    result = SimpleCompaction(max_preserved_messages=2).prepare(messages)
+
+    assert result.cascade_depth < 3
+    assert result.compact_message is not None
+    parts = result.compact_message.content
+    last_part = parts[-1]
+    assert isinstance(last_part, TextPart)
+    assert prompts.COMPACT in last_part.text
+    assert prompts.COMPACT_CASCADE not in last_part.text

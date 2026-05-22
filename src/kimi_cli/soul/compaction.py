@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Callable, NamedTuple, Protocol, runtime_checkable
 
 import kosong
 from kosong.chat_provider import TokenUsage
@@ -12,6 +12,7 @@ import kimi_cli.prompts as prompts
 from kimi_cli.llm import LLM
 from kimi_cli.soul.message import system
 from kimi_cli.utils.logging import logger
+from kimi_cli.utils.tokens import count_message_tokens, count_tokens
 from kimi_cli.wire.types import ContentPart, TextPart, ThinkPart
 
 
@@ -33,24 +34,39 @@ class CompactionResult(NamedTuple):
         The estimate is intentionally conservative — it will be replaced by the
         real value on the next LLM call.
         """
+        return self.estimated_token_count_for_model()
+
+    def estimated_token_count_for_model(self, model: str | None = None) -> int:
+        """Model-aware token count estimate.
+
+        Args:
+            model: Optional model name for tiktoken-based counting.
+        """
         if self.usage is not None and len(self.messages) > 0:
             summary_tokens = self.usage.output
-            preserved_tokens = estimate_text_tokens(self.messages[1:])
+            preserved_tokens = count_message_tokens(self.messages[1:], model=model)
             return summary_tokens + preserved_tokens
 
-        return estimate_text_tokens(self.messages)
+        return count_message_tokens(self.messages, model=model)
 
 
-def estimate_text_tokens(messages: Sequence[Message]) -> int:
-    """Estimate tokens from message text content using a character-based heuristic."""
-    total_chars = 0
+def estimate_text_tokens(messages: Sequence[Message], model: str | None = None) -> int:
+    """Estimate tokens from message text content.
+
+    Backwards-compatible wrapper around :func:`count_message_tokens`.
+    """
+    return count_message_tokens(messages, model=model)
+
+
+def _detect_cascade_depth(messages: Sequence[Message]) -> int:
+    """Count how many messages are already compaction summaries."""
+    depth = 0
     for msg in messages:
         for part in msg.content:
-            if isinstance(part, TextPart):
-                total_chars += len(part.text)
-    # ~4 chars per token for English; somewhat underestimates for CJK text,
-    # but this is a temporary estimate that gets corrected on the next LLM call.
-    return total_chars // 4
+            if isinstance(part, TextPart) and "Previous context has been compacted" in part.text:
+                depth += 1
+                break
+    return depth
 
 
 def should_auto_compact(
@@ -70,6 +86,58 @@ def should_auto_compact(
         token_count >= max_context_size * trigger_ratio
         or token_count + reserved_context_size >= max_context_size
     )
+
+
+def adaptive_preserve_depth(
+    messages: Sequence[Message],
+    *,
+    min_preserved: int = 1,
+    max_preserved: int = 10,
+) -> int:
+    """Heuristically determine how many recent turns to preserve verbatim.
+
+    Signals examined (only the most recent turn is inspected for speed):
+    - Contains ``error`` / ``exception`` / ``failed``           → +1
+    - Tool call with >2 file edits                              → +1
+    - Contains :class:`ThinkPart` (reasoning)                   → +1
+    - Pure Q&A (no tools)                                       → baseline (no boost)
+
+    The result is clamped to ``[min_preserved, max_preserved]``.
+    """
+    depth = min_preserved
+    if not messages:
+        return depth
+
+    # Inspect only the most recent user/assistant turn for speed.
+    last_turn: Message | None = None
+    for msg in reversed(messages):
+        if msg.role in {"user", "assistant"}:
+            last_turn = msg
+            break
+
+    if last_turn is None:
+        return depth
+
+    text = ""
+    has_think = False
+    for part in last_turn.content:
+        if isinstance(part, TextPart):
+            text += part.text
+        elif isinstance(part, ThinkPart):
+            has_think = True
+
+    lowered = text.lower()
+    if any(k in lowered for k in ("error", "exception", "failed")):
+        depth += 1
+    if has_think:
+        depth += 1
+    # Heuristic for "tool call with >2 file edits" – look for multiple file paths
+    # in tool results (common pattern: ``file:`` or ``.py``, ``.md``, etc.).
+    file_refs = lowered.count("file:") + lowered.count(".py") + lowered.count(".md")
+    if file_refs > 2:
+        depth += 1
+
+    return min(max(depth, min_preserved), max_preserved)
 
 
 @runtime_checkable
@@ -101,19 +169,40 @@ if TYPE_CHECKING:
 
 
 class SimpleCompaction:
-    def __init__(self, max_preserved_messages: int = 2) -> None:
+    def __init__(
+        self,
+        max_preserved_messages: int = 2,
+        *,
+        preserve_depth: int | Callable[[Sequence[Message]], int] | None = None,
+    ) -> None:
         self.max_preserved_messages = max_preserved_messages
+        self.preserve_depth = preserve_depth
+
+    def _resolve_preserve_depth(self, messages: Sequence[Message]) -> int:
+        if self.preserve_depth is None:
+            return self.max_preserved_messages
+        if callable(self.preserve_depth):
+            return self.preserve_depth(messages)
+        return self.preserve_depth
 
     async def compact(
         self, messages: Sequence[Message], llm: LLM, *, custom_instruction: str = ""
     ) -> CompactionResult:
-        compact_message, to_preserve = self.prepare(messages, custom_instruction=custom_instruction)
+        prepare_result = self.prepare(messages, custom_instruction=custom_instruction)
+        compact_message = prepare_result.compact_message
+        to_preserve = prepare_result.to_preserve
         if compact_message is None:
             return CompactionResult(messages=to_preserve, usage=None)
 
         # Call kosong.step to get the compacted context
         # TODO: set max completion tokens
-        logger.debug("Compacting context...")
+        if prepare_result.cascade_depth >= 3:
+            logger.debug(
+                "Compacting context with cascade prompt (depth={depth})...",
+                depth=prepare_result.cascade_depth,
+            )
+        else:
+            logger.debug("Compacting context...")
         result = await kosong.step(
             chat_provider=llm.chat_provider,
             system_prompt="You are a helpful assistant that compacts conversation context.",
@@ -141,11 +230,13 @@ class SimpleCompaction:
     class PrepareResult(NamedTuple):
         compact_message: Message | None
         to_preserve: Sequence[Message]
+        cascade_depth: int = 0
 
     def prepare(
         self, messages: Sequence[Message], *, custom_instruction: str = ""
     ) -> PrepareResult:
-        if not messages or self.max_preserved_messages <= 0:
+        preserve_depth = self._resolve_preserve_depth(messages)
+        if not messages or preserve_depth <= 0:
             return self.PrepareResult(compact_message=None, to_preserve=messages)
 
         history = list(messages)
@@ -154,15 +245,23 @@ class SimpleCompaction:
         for index in range(len(history) - 1, -1, -1):
             if history[index].role in {"user", "assistant"}:
                 n_preserved += 1
-                if n_preserved == self.max_preserved_messages:
+                if n_preserved == preserve_depth:
                     preserve_start_index = index
                     break
 
-        if n_preserved < self.max_preserved_messages:
+        if n_preserved < preserve_depth:
             return self.PrepareResult(compact_message=None, to_preserve=messages)
 
         to_compact = history[:preserve_start_index]
-        to_preserve = history[preserve_start_index:]
+        to_preserve = list(history[preserve_start_index:])
+
+        # Phase 6: Sliding-Window + First-Turn Preservation
+        # Always keep the very first message (primacy bias) if it's not already preserved.
+        if history and history[0] not in to_preserve:
+            to_preserve.insert(0, history[0])
+            # Ensure the first message is not part of the compaction input
+            if history[0] in to_compact:
+                to_compact = [m for m in to_compact if m is not history[0]]
 
         if not to_compact:
             # Let's hope this won't exceed the context size limit
@@ -177,7 +276,11 @@ class SimpleCompaction:
             compact_message.content.extend(
                 part for part in msg.content if isinstance(part, TextPart)
             )
-        prompt_text = "\n" + prompts.COMPACT
+        cascade_depth = _detect_cascade_depth(to_compact)
+        if cascade_depth >= 3:
+            prompt_text = "\n" + prompts.COMPACT_CASCADE
+        else:
+            prompt_text = "\n" + prompts.COMPACT
         if custom_instruction:
             prompt_text += (
                 "\n\n**User's Custom Compaction Instruction:**\n"
@@ -186,4 +289,4 @@ class SimpleCompaction:
                 f"{custom_instruction}"
             )
         compact_message.content.append(TextPart(text=prompt_text))
-        return self.PrepareResult(compact_message=compact_message, to_preserve=to_preserve)
+        return self.PrepareResult(compact_message=compact_message, to_preserve=to_preserve, cascade_depth=cascade_depth)

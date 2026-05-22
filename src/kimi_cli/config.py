@@ -93,6 +93,26 @@ class LoopControl(BaseModel):
     """Context usage ratio threshold for auto-compaction. Default is 0.85 (85%).
     Auto-compaction triggers when context_tokens >= max_context_size * compaction_trigger_ratio
     or when context_tokens + reserved_context_size >= max_context_size."""
+    max_system_prompt_tokens: int = Field(default=20_000, ge=1_000)
+    """Maximum token count for the system prompt. If the constructed prompt exceeds
+    this budget, step memory and changed-files lists are truncated progressively.
+    Default is 20_000."""
+    max_preserved_messages: int = Field(default=2, ge=1, le=10)
+    """Maximum number of recent user/assistant message pairs to preserve verbatim
+    during context compaction. Default is 2."""
+    min_preserved_messages: int = Field(default=1, ge=1, le=10)
+    """Minimum number of recent user/assistant message pairs to preserve verbatim
+    during context compaction. Default is 1."""
+    adaptive_preserve_enabled: bool = Field(default=True)
+    """When true, dynamically adjust preserve depth based on session signals
+    (errors, tool calls, reasoning). Default is true."""
+    auto_retrieve_history: bool = Field(default=True)
+    """When true, automatically search archived conversation history before each
+    turn and inject the most relevant past turn if it exceeds the similarity
+    threshold. Default is true."""
+    auto_retrieve_history_threshold: float = Field(default=5.0, ge=0.0)
+    """Minimum BM25 relevance score for auto-injecting a matching archived turn.
+    Higher values require stronger matches. Default is 5.0."""
 
 
 class BackgroundConfig(BaseModel):
