@@ -16,11 +16,10 @@ class Params(BaseModel):
 class ContextRetrieval(CallableTool2[Params]):
     name: str = "ContextRetrieval"
     description: str = (
-        "Search the archived conversation history for past turns that match a query. "
-        "Returns verbatim excerpts from previous user/assistant exchanges that were "
-        "compacted or rotated out of the active context window. "
-        "Use this when you need to recall a specific decision, file path, or error message "
-        "that is no longer visible in the current conversation."
+        "Search archived conversation history for past turns matching a query. "
+        "Returns verbatim excerpts from user/assistant exchanges that were compacted or rotated "
+        "out of the active context window. Use to recall decisions, file paths, or error messages "
+        "no longer visible in the current conversation."
     )
     params: type[Params] = Params
 
