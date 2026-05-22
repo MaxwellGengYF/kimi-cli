@@ -314,10 +314,10 @@ async def grep_tool(runtime: Runtime) -> Grep:
 
 
 @pytest.fixture
-def write_file_tool(runtime: Runtime, approval: Approval) -> Generator[WriteFile]:
+def write_file_tool(runtime: Runtime, approval: Approval, session: Session) -> Generator[WriteFile]:
     """Create a WriteFile tool instance."""
     with tool_call_context("WriteFile"):
-        yield WriteFile(runtime, approval)
+        yield WriteFile(runtime, approval, session)
 
 
 @pytest.fixture

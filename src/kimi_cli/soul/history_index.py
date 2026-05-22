@@ -44,6 +44,15 @@ class HistoryIndex:
 
     def index_messages(self, messages: Sequence[Message]) -> None:
         """Add *messages* to the index, skipping system/tool roles."""
+        # If the index has been finalized (e.g. after a search), rebuild it
+        # from the existing turns so new documents can be added.
+        if self._index._finalized:
+            old_turns = list(self._turns)
+            self._index = InvertedIndex()
+            for turn in old_turns:
+                tokens = self._tokenizer.tokenize(turn["text"])
+                self._index.add_document(turn["turn_id"], tokens)
+
         for msg in messages:
             if msg.role not in {"user", "assistant"}:
                 continue

@@ -634,8 +634,8 @@ class TestKimiSoulPlanState:
 
     def test_bind_plan_mode_tools_binds_callbacks(self, runtime: Runtime, tmp_path: Path) -> None:
         toolset = KimiToolset()
-        write_tool = WriteFile(runtime, runtime.approval)
-        replace_tool = EditFile(runtime, runtime.approval)
+        write_tool = WriteFile(runtime, runtime.approval, runtime.session)
+        replace_tool = EditFile(runtime, runtime.approval, runtime.session)
         toolset.add(write_tool)
         toolset.add(replace_tool)
 

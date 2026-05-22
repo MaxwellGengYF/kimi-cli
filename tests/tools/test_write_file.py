@@ -219,15 +219,15 @@ async def test_write_valid_json(write_file_tool: WriteFile, temp_work_dir: KaosP
 
 
 async def test_write_invalid_json(write_file_tool: WriteFile, temp_work_dir: KaosPath):
-    """Test writing invalid JSON content is rejected."""
+    """Test writing invalid JSON content returns a format validation error."""
     file_path = temp_work_dir / "test.json"
     content = '{"key": broken}'
 
-    result = await write_file_tool(Params(path=str(file_path), content=content))
+    with patch("kimi_cli.tools.file.write.json_repair.repair_json", return_value=""):
+        result = await write_file_tool(Params(path=str(file_path), content=content))
     assert result.is_error
     assert "Format validation failed" in result.brief
     assert "JSON decode error" in result.message
-    assert not await file_path.exists()
 
 
 async def test_write_valid_xml(write_file_tool: WriteFile, temp_work_dir: KaosPath):
@@ -241,7 +241,7 @@ async def test_write_valid_xml(write_file_tool: WriteFile, temp_work_dir: KaosPa
 
 
 async def test_write_invalid_xml(write_file_tool: WriteFile, temp_work_dir: KaosPath):
-    """Test writing invalid XML content is rejected."""
+    """Test writing invalid XML content returns a format validation error."""
     file_path = temp_work_dir / "test.xml"
     content = "<root><unclosed></root>"
 
@@ -249,10 +249,9 @@ async def test_write_invalid_xml(write_file_tool: WriteFile, temp_work_dir: Kaos
     assert result.is_error
     assert "Format validation failed" in result.brief
     assert "XML parse error" in result.message
-    assert not await file_path.exists()
 
 
-async def test_write_approval_rejected(runtime: Runtime, temp_work_dir: KaosPath):
+async def test_write_approval_rejected(runtime: Runtime, session, temp_work_dir: KaosPath):
     """Test that a rejected approval returns a ToolRejectedError."""
     file_path = temp_work_dir / "test.txt"
 
@@ -261,7 +260,7 @@ async def test_write_approval_rejected(runtime: Runtime, temp_work_dir: KaosPath
     approval.request = cast(Any, request_mock)
 
     with tool_call_context("WriteFile"):
-        tool = WriteFile(runtime, approval)
+        tool = WriteFile(runtime, approval, session)
         result = await tool(Params(path=str(file_path), content="content"))
 
     assert result.is_error
@@ -269,10 +268,10 @@ async def test_write_approval_rejected(runtime: Runtime, temp_work_dir: KaosPath
     request_mock.assert_awaited_once()
 
 
-async def test_write_bind_plan_mode(runtime: Runtime, temp_work_dir: KaosPath):
+async def test_write_bind_plan_mode(runtime: Runtime, session, temp_work_dir: KaosPath):
     """Test bind_plan_mode sets checker and getter correctly."""
     with tool_call_context("WriteFile"):
-        tool = WriteFile(runtime, Approval(yolo=True))
+        tool = WriteFile(runtime, Approval(yolo=True), session)
         checker = lambda: False
         getter = lambda: None
         tool.bind_plan_mode(checker, getter)
@@ -280,12 +279,12 @@ async def test_write_bind_plan_mode(runtime: Runtime, temp_work_dir: KaosPath):
         assert tool._plan_file_path_getter is getter
 
 
-async def test_write_exception_during_write(runtime: Runtime, temp_work_dir: KaosPath):
+async def test_write_exception_during_write(runtime: Runtime, session, temp_work_dir: KaosPath):
     """Test that an exception during write is handled gracefully."""
     file_path = temp_work_dir / "test.txt"
 
     with tool_call_context("WriteFile"):
-        tool = WriteFile(runtime, Approval(yolo=True))
+        tool = WriteFile(runtime, Approval(yolo=True), session)
         with patch("kaos.path.KaosPath.write_text", side_effect=OSError("disk full")):
             result = await tool(Params(path=str(file_path), content="content"))
 

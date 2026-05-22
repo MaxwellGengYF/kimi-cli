@@ -223,7 +223,7 @@ async def test_ralph_loop_replays_original_prompt(runtime: Runtime, tmp_path: Pa
                     content=[
                         TextPart(
                             text="""\
-Check this image. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop further iterations. If you are not 100% sure, choose CONTINUE.)
+Check this image. (Automated loop — choose STOP only when fully complete. If unsure, choose CONTINUE.)
 
 Available branches:
 - CONTINUE
@@ -242,7 +242,7 @@ Reply with a choice using <choice>...</choice>.\
                     content=[
                         TextPart(
                             text="""\
-Check this image. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop further iterations. If you are not 100% sure, choose CONTINUE.)
+Check this image. (Automated loop — choose STOP only when fully complete. If unsure, choose CONTINUE.)
 
 Available branches:
 - CONTINUE
@@ -291,7 +291,7 @@ async def test_ralph_loop_stops_on_choice(runtime: Runtime, tmp_path: Path) -> N
                     content=[
                         TextPart(
                             text="""\
-do it. (You are running in an automated loop where the same prompt is fed repeatedly. Only choose STOP when the task is fully complete. Including it will stop further iterations. If you are not 100% sure, choose CONTINUE.)
+do it. (Automated loop — choose STOP only when fully complete. If unsure, choose CONTINUE.)
 
 Available branches:
 - CONTINUE
@@ -353,9 +353,7 @@ async def test_ralph_loop_stops_on_tool_rejected(runtime: Runtime, tmp_path: Pat
                     content=[
                         TextPart(
                             text=(
-                                "<system>ERROR: The tool call is rejected by the user. "
-                                "Stop what you are doing and wait for the user to tell you "
-                                "how to proceed.</system>"
+                                "<system>ERROR: Tool call rejected by user. Stop and wait for instructions.</system>"
                             )
                         )
                     ],

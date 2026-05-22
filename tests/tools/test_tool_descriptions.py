@@ -62,7 +62,7 @@ def test_think_description(think_tool: Think):
 def test_set_todo_list_description(set_todo_list_tool: SetTodoList):
     """Test the description of SetTodoList tool."""
     assert set_todo_list_tool.base.description == snapshot(
-        "Track progress with a todo list.\n"
+        "Track progress with a todo list."
     )
 
 
@@ -147,7 +147,7 @@ def test_task_stop_description(task_stop_tool: TaskStop):
 def test_read_file_description(read_file_tool: ReadFile):
     """Test the description of ReadFile tool."""
     assert read_file_tool.base.description == snapshot(
-        "Read text files.\n"
+        "Read text files. Lines over 2000 chars truncated. Max 1000 lines, 102400 bytes per call. Negative offset = tail mode.\n"
     )
 
 
@@ -205,7 +205,7 @@ On Windows, the `directory` parameter accepts both Windows native paths (`C:\\Us
 def test_grep_description(grep_tool: Grep):
     """Test the description of Grep tool."""
     assert grep_tool.base.description == snapshot(
-        "Search files using ripgrep.\n"
+        "Search files using ripgrep."
     )
 
 
@@ -219,7 +219,7 @@ def test_write_file_description(write_file_tool: WriteFile):
 def test_edit_file_description(edit_file_tool: EditFile):
     """Test the description of EditFile tool."""
     assert edit_file_tool.base.description == snapshot(
-        "Replace strings in text files.\n"
+        "Replace strings in text files."
     )
 
 

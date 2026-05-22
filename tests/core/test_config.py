@@ -40,7 +40,7 @@ def test_default_config_dump():
                 "max_preserved_messages": 2,
                 "min_preserved_messages": 1,
                 "adaptive_preserve_enabled": True,
-                "auto_retrieve_history": False,
+                "auto_retrieve_history": True,
                 "auto_retrieve_history_threshold": 5.0,
             },
             "background": {

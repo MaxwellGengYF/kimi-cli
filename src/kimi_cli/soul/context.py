@@ -8,6 +8,7 @@ from typing import Any, cast
 import aiofiles
 import aiofiles.os
 import orjson
+import json
 from kosong.message import Message
 from pydantic import ValidationError
 
@@ -275,7 +276,7 @@ class Context:
     ) -> dict[str, Any] | None:
         try:
             line_json = loads_relaxed(line)
-        except orjson.JSONDecodeError as exc:
+        except json.JSONDecodeError as exc:
             logger.warning(
                 "Skipping malformed context line {line_no} in {file}: {error}",
                 line_no=line_no,

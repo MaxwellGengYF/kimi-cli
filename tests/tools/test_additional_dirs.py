@@ -118,7 +118,7 @@ async def test_write_file_in_additional_dir(
 ):
     """WriteFile should write to files in additional directories."""
     with tool_call_context("WriteFile"):
-        write_tool = WriteFile(runtime_with_additional_dir, approval)
+        write_tool = WriteFile(runtime_with_additional_dir, approval, runtime_with_additional_dir.session)
         target = additional_dir / "output.txt"
 
         result = await write_tool(WriteParams(path=str(target), content="new content"))
@@ -131,7 +131,7 @@ async def test_write_file_in_additional_dir_uses_edit_action(
 ):
     """Writing in additional dir should use EDIT action (not EDIT_OUTSIDE)."""
     with tool_call_context("WriteFile"):
-        write_tool = WriteFile(runtime_with_additional_dir, approval)
+        write_tool = WriteFile(runtime_with_additional_dir, approval, runtime_with_additional_dir.session)
         target = additional_dir / "in_workspace.txt"
 
         result = await write_tool(WriteParams(path=str(target), content="content"))
@@ -146,7 +146,7 @@ async def test_replace_in_additional_dir(
 ):
     """EditFile should edit files in additional directories."""
     with tool_call_context("EditFile"):
-        replace_tool = EditFile(runtime_with_additional_dir, approval)
+        replace_tool = EditFile(runtime_with_additional_dir, approval, runtime_with_additional_dir.session)
         target = additional_dir / "code.py"
         await target.write_text("old_value = 1\n")
 

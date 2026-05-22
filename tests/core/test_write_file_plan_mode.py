@@ -31,7 +31,7 @@ class TestWriteFilePlanMode:
         """Writing to the plan file should bypass approval even with yolo=False."""
         approval = Approval(yolo=False)
         with tool_call_context("WriteFile"):
-            tool = WriteFile(runtime, approval)
+            tool = WriteFile(runtime, approval, runtime.session)
             plan_path = tmp_path / "plans" / "test-plan.md"
             tool.bind_plan_mode(
                 checker=lambda: True,
@@ -64,7 +64,7 @@ class TestWriteFilePlanMode:
         target = temp_work_dir / "other.txt"
         plan_path = Path(str(temp_work_dir)) / "plans" / "plan.md"
         with tool_call_context("WriteFile"):
-            tool = WriteFile(runtime, approval)
+            tool = WriteFile(runtime, approval, runtime.session)
             tool.bind_plan_mode(
                 checker=lambda: True,
                 path_getter=lambda: plan_path,
@@ -92,7 +92,7 @@ class TestWriteFilePlanMode:
         approval = Approval(yolo=True)
         target = temp_work_dir / "normal.txt"
         with tool_call_context("WriteFile"):
-            tool = WriteFile(runtime, approval)
+            tool = WriteFile(runtime, approval, runtime.session)
             result = await tool(
                 Params(
                     path=str(target),
@@ -110,7 +110,7 @@ class TestWriteFilePlanMode:
         approval = Approval(yolo=False)
         plan_path = tmp_path / "deep" / "nested" / "plan.md"
         with tool_call_context("WriteFile"):
-            tool = WriteFile(runtime, approval)
+            tool = WriteFile(runtime, approval, runtime.session)
             tool.bind_plan_mode(
                 checker=lambda: True,
                 path_getter=lambda: plan_path,
@@ -138,7 +138,7 @@ class TestWriteFilePlanMode:
         plan_path.parent.mkdir(parents=True, exist_ok=True)
         plan_path.write_text("# Plan v1\n")
         with tool_call_context("WriteFile"):
-            tool = WriteFile(runtime, approval)
+            tool = WriteFile(runtime, approval, runtime.session)
             tool.bind_plan_mode(
                 checker=lambda: runtime.session.state.plan_mode,
                 path_getter=lambda: plan_path,
@@ -209,7 +209,7 @@ class TestPlanModeToolContract:
         # WriteFile to plan file works (auto-approved, no approval needed)
         approval = Approval(yolo=False)
         with tool_call_context("WriteFile"):
-            write_tool = WriteFile(runtime, approval)
+            write_tool = WriteFile(runtime, approval, runtime.session)
             write_tool.bind_plan_mode(
                 checker=lambda: runtime.session.state.plan_mode,
                 path_getter=lambda: plan_path,

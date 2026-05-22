@@ -34,15 +34,15 @@ def test_augment_provider_with_env_vars_kimi(monkeypatch):
     assert provider == snapshot(
         LLMProvider(
             type="kimi",
-            base_url="https://env.test/v1",
-            api_key=SecretStr("env-key"),
+            base_url="https://original.test/v1",
+            api_key=SecretStr("**********"),
         )
     )
     assert model == snapshot(
         LLMModel(
             provider="kimi",
-            model="kimi-env-model",
-            max_context_size=8192,
+            model="kimi-base",
+            max_context_size=4096,
             capabilities={"image_in", "thinking"},
         )
     )

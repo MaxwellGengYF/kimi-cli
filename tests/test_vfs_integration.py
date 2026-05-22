@@ -59,10 +59,14 @@ def _mock_runtime(work_dir: Path):
     class MockBuiltinArgs:
         KIMI_WORK_DIR = KaosPath.unsafe_from_local_path(work_dir)
 
+    class MockEnvironment:
+        os_kind = "Windows"
+
     class MockRuntime:
         builtin_args = MockBuiltinArgs()
         additional_dirs = []
         skills_dirs = []
+        environment = MockEnvironment()
 
     return MockRuntime()
 
@@ -89,6 +93,8 @@ def _mock_session():
 
     class MockSession:
         id = "test-session"
+        custom_data = {}
+        custom_config = {}
 
     return MockSession()
 
@@ -103,6 +109,7 @@ class TestVFSOverlay:
         tool = WriteFile(
             runtime=_mock_runtime(work_dir),
             approval=_mock_approval(),
+            session=_mock_session(),
             vfs=vfs,
         )
         with _tool_call_ctx("WriteFile"):
@@ -122,6 +129,7 @@ class TestVFSOverlay:
         write_tool = WriteFile(
             runtime=_mock_runtime(work_dir),
             approval=_mock_approval(),
+            session=_mock_session(),
             vfs=vfs,
         )
         read_tool = ReadFile(
@@ -143,6 +151,7 @@ class TestVFSOverlay:
         write_tool = WriteFile(
             runtime=_mock_runtime(work_dir),
             approval=_mock_approval(),
+            session=_mock_session(),
             vfs=vfs,
         )
         glob_tool = Glob(runtime=_mock_runtime(work_dir), vfs=vfs)
@@ -166,6 +175,7 @@ class TestVFSOverlay:
         write_tool = WriteFile(
             runtime=_mock_runtime(work_dir),
             approval=_mock_approval(),
+            session=_mock_session(),
             vfs=vfs,
         )
         grep_tool = Grep(runtime=_mock_runtime(work_dir), vfs=vfs)
@@ -209,6 +219,7 @@ class TestVFSOverlay:
         tool = WriteFile(
             runtime=_mock_runtime(work_dir),
             approval=_mock_approval(),
+            session=_mock_session(),
             vfs=vfs,
         )
         with _tool_call_ctx("WriteFile"):

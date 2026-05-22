@@ -113,8 +113,7 @@ def test_set_todo_list_params_schema(set_todo_list_tool: SetTodoList):
                             "items": {
                                 "properties": {
                                     "title": {
-                                        "description": "Title",
-                                        "minLength": 1,
+                                        "description": "Title", "maxLength": 65536, "minLength": 1,
                                         "type": "string",
                                     },
                                     "status": {
@@ -129,7 +128,7 @@ def test_set_todo_list_params_schema(set_todo_list_tool: SetTodoList):
                             "type": "array",
                         },
                         {"properties": {
-    "title": {"description": "Title", "minLength": 1, "type": "string"},
+    "title": {"description": "Title", "maxLength": 65536, "minLength": 1, "type": "string"},
     "status": {
         "description": "Status",
         "enum": ["pending", "in_progress", "done"],
@@ -269,8 +268,17 @@ def test_read_file_params_schema(read_file_tool: ReadFile):
                     "description": "Lines to read, max 1000.",
                     "minimum": 1,
                     "type": "integer",
-                },
-            },
+                }, "max_char": {
+    "default": 65536,
+    "description": "Maximum number of characters to return.",
+    "minimum": 0,
+    "type": "integer",
+}, "char_offset": {
+    "default": 0,
+    "description": "Character offset to start returning from.",
+    "minimum": 0,
+    "type": "integer",
+}},
             "required": ["path"],
             "type": "object",
         }
@@ -419,7 +427,7 @@ def test_write_file_params_schema(write_file_tool: WriteFile):
                     "description": "Write mode: overwrite or append.",
                     "enum": ["overwrite", "append"],
                     "type": "string",
-                }, "fix_foramt": {"default": True, "description": "Auto fix file format.", "type": "boolean"}},
+                }, "reason": {"default": "", "description": "Reason to call this tool.", "type": "string"}},
             "required": ["path", "content"],
             "type": "object",
         }
@@ -480,7 +488,7 @@ def test_edit_file_params_schema(edit_file_tool: EditFile):
                         },
                     ],
                     "description": "One or more edits.",
-                }, "fix_foramt": {"default": True, "description": "Auto fix file format.", "type": "boolean"}},
+                }, "reason": {"default": "", "description": "Reason to call this tool.", "type": "string"}},
             "required": ["path", "edit"],
             "type": "object",
         }
