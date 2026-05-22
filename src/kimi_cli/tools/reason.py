@@ -22,7 +22,6 @@ class ToolCallReason:
 
     def __init__(self) -> None:
         self._records: dict[str, list[dict[str, str]]] = {}
-        self._latest_path: str | None = None
 
     def add_tool_call_reason(self, params: BaseModel, tool: CallableTool2[Any]) -> None:
         """Record a tool call reason for WriteFile or EditFile.
@@ -46,7 +45,6 @@ class ToolCallReason:
         record: dict[str, str] = {"tool_name": tool.name, "reason": reason}
 
         self._records.setdefault(path, []).append(record)
-        self._latest_path = path
 
     def formatted_print(self, paths: list[str]) -> str:
         """Find the paths' changes and return them as a formatted string.
@@ -82,28 +80,23 @@ class ToolCallReason:
         """Return a sorted list of absolute paths that have been recorded."""
         return sorted(self._records.keys())
 
-    @property
-    def latest_path(self) -> str | None:
-        """Return the most recently added file path, or None if empty."""
-        return self._latest_path
-
-    def to_markdown(self, paths: list[str] | None = None, cwd: Path | None = None) -> str:
+    def to_markdown(self, cwd: Path | None = None, max_count: int = 100) -> str:
         """Return a dense markdown representation of changed files.
 
         Args:
-            paths: Optional list of paths to include. Defaults to all recorded paths.
             cwd: Optional directory to make paths relative to.
+            max_count: Maximum number of records to show per file. Defaults to 100.
         """
         if not self._records:
             return ""
         lines = ["Changed files:"]
-        target_paths = sorted(self._records.keys()) if paths is None else sorted(paths)
+        target_paths = sorted(self._records.keys())
         for path in target_paths:
             records = self._records.get(path)
             if not records:
                 continue
             parts: list[str] = []
-            for rec in records:
+            for rec in records[-max_count:]:
                 tool_name = rec.get("tool_name", "Unknown")
                 reason = rec.get("reason", None)
                 if reason:

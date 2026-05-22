@@ -1333,7 +1333,7 @@ class KimiSoul:
             )
             raise
         await self._context.clear()
-        await self._context.write_system_prompt(self._agent.get_system_prompt())
+        await self._context.write_system_prompt(self._agent.get_system_prompt(is_compacting=True))
         await self._checkpoint()
         await self._context.append_message(compaction_result.messages)
         estimated_token_count = compaction_result.estimated_token_count
