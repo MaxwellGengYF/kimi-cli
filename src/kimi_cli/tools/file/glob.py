@@ -77,7 +77,7 @@ class Glob(CallableTool2[Params]):
                     f"Pattern `{pattern}` starts with `**`, which is disallowed. "
                     "Use a more specific pattern. Top-level items in working directory:"
                 ),
-                brief="Unsafe pattern",
+                brief=f"Unsafe pattern: {pattern}",
             )
 
         # For **/<file-name>, also check if the file exists at the root directory
@@ -94,7 +94,7 @@ class Glob(CallableTool2[Params]):
                 f"Pattern `{pattern}` starts with `**`, which is disallowed. "
                 "Use a more specific pattern. Top-level items in working directory:"
             ),
-            brief="Unsafe pattern",
+            brief=f"Unsafe pattern: {pattern}",
         )
 
     # async def _validate_directory(self, directory: KaosPath) -> ToolError | None:
@@ -130,12 +130,12 @@ class Glob(CallableTool2[Params]):
             if not await dir_path.exists():
                 return ToolError(
                     message=f"`{params.directory}` does not exist.",
-                    brief="Directory not found",
+                    brief=f"Directory not found: {params.directory}",
                 )
             if not await dir_path.is_dir():
                 return ToolError(
                     message=f"`{params.directory}` is not a directory.",
-                    brief="Invalid directory",
+                    brief=f"Invalid directory: {params.directory}",
                 )
 
             # Perform the glob search - bounded streaming with inline filtering
@@ -172,6 +172,7 @@ class Glob(CallableTool2[Params]):
             return ToolOk(
                 output="\n".join(str(p.relative_to(dir_path)) for p in matches),
                 message=message,
+                brief=f"Glob {dir_path}",
             )
 
         except Exception as e:
@@ -180,5 +181,5 @@ class Glob(CallableTool2[Params]):
             )
             return ToolError(
                 message=f"Glob failed for `{params.pattern}`: {e}",
-                brief="Glob failed",
+                brief=f"Glob failed: {params.pattern}",
             )

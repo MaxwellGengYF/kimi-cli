@@ -102,7 +102,7 @@ class ReadFile(CallableTool2[Params]):
                     "You must provide an absolute path to read a file "
                     "outside the working directory."
                 ),
-                brief="Invalid path",
+                brief=f"Invalid path: {path}",
             )
 
         protected_paths = self._session.custom_config.get("config_json", {}).get("protected_read_paths")
@@ -111,7 +111,7 @@ class ReadFile(CallableTool2[Params]):
             if matched := check_path_protected(resolved_path, protected_paths, self._work_dir):
                 return ToolError(
                     message=f"Reading `{path}` is blocked by protected path rule: `{matched}`.",
-                    brief="Protected path",
+                    brief=f"Protected path: {path}",
                 )
         return None
 
@@ -138,18 +138,18 @@ class ReadFile(CallableTool2[Params]):
                         "(matched sensitive file pattern). "
                         "Reading this file is blocked to protect credentials."
                     ),
-                    brief="Sensitive file",
+                    brief=f"Sensitive file: {params.path}",
                 )
 
             if not await p.exists():
                 return ToolError(
                     message=f"`{params.path}` does not exist.",
-                    brief="File not found",
+                    brief=f"File not found: {params.path}",
                 )
             if not await p.is_file():
                 return ToolError(
                     message=f"`{params.path}` is not a file.",
-                    brief="Invalid path",
+                    brief=f"Invalid path: {params.path}"
                 )
 
             header = await p.read_bytes(MEDIA_SNIFF_BYTES)
@@ -160,7 +160,7 @@ class ReadFile(CallableTool2[Params]):
                         f"`{params.path}` is a {file_type.kind} file. "
                         "Use other appropriate tools to read image or video files."
                     ),
-                    brief="Unsupported file type",
+                    brief=f"Unsupported file type: {params.path}",
                 )
 
             if file_type.kind == "unknown":
@@ -172,7 +172,7 @@ class ReadFile(CallableTool2[Params]):
                         "If you read/operate it with Python, you MUST ensure that any "
                         "third-party packages are installed in a virtual environment (venv)."
                     ),
-                    brief="File not readable",
+                    brief=f"File not readable: {params.path}",
                 )
 
             assert params.n_lines >= 1
@@ -190,7 +190,7 @@ class ReadFile(CallableTool2[Params]):
             logger.warning("ReadFile failed: {path}: {error}", path=params.path, error=e)
             return ToolError(
                 message=f"Failed to read {params.path}. Error: {e}",
-                brief="Failed to read file",
+                brief=f"Failed to read file: {params.path}",
             )
 
     async def _read_forward(self, p: KaosPath, params: Params) -> ToolReturnValue:
@@ -243,6 +243,7 @@ class ReadFile(CallableTool2[Params]):
         return ToolOk(
             output="".join(lines_with_no),
             message=message,
+            brief=f"Read {params.path}",
         )
 
     async def _read_tail(self, p: KaosPath, params: Params) -> ToolReturnValue:
@@ -312,4 +313,5 @@ class ReadFile(CallableTool2[Params]):
         return ToolOk(
             output="".join(lines_with_no),
             message=message,
+            brief=f"Read {params.path}",
         )

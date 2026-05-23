@@ -8,6 +8,7 @@ import heapq
 import os
 import platform
 import re
+import shlex
 import shutil
 import stat
 import tarfile
@@ -315,6 +316,11 @@ def _build_rg_args(rg_path: str, params: Params, *, single_threaded: bool = Fals
     return args
 
 
+def _format_cmd(params: Params, *, rg_path: str = "rg") -> str:
+    """Format the equivalent ripgrep command string for display."""
+    return shlex.join(_build_rg_args(rg_path, params))
+
+
 async def _read_stream(
     stream: asyncio.StreamReader,
     buffer: bytearray,
@@ -614,7 +620,7 @@ class Grep(CallableTool2[Params]):
                             f"Grep timed out after {RG_TIMEOUT}s. "
                             "Try a more specific path or pattern."
                         ),
-                        brief="Grep timed out",
+                        brief=f"Grep timed out | {_format_cmd(params)}",
                     )
                 timeout_msg = f"Grep timed out after {RG_TIMEOUT}s. Partial results returned."
                 message = f"{message} {timeout_msg}" if message else timeout_msg
@@ -627,7 +633,7 @@ class Grep(CallableTool2[Params]):
                     return await self.__call__(params, _retry=True)
                 return ToolError(
                     message=f"Failed to grep. Error: {stderr_str}",
-                    brief="Failed to grep",
+                    brief=f"Failed to grep | {_format_cmd(params)}",
                 )
 
             # --- Post-processing pipeline ---
@@ -757,10 +763,10 @@ class Grep(CallableTool2[Params]):
                 no_match_msg = "No matches found"
                 if message:
                     no_match_msg = f"{no_match_msg}. {message}"
-                return builder.ok(message=no_match_msg)
+                return builder.ok(message=no_match_msg, brief=_format_cmd(params))
 
             builder.write(output)
-            return builder.ok(message=message)
+            return builder.ok(message=message, brief=_format_cmd(params))
 
         except asyncio.CancelledError:
             raise
@@ -773,7 +779,7 @@ class Grep(CallableTool2[Params]):
             )
             return ToolError(
                 message=f"Failed to grep. Error: {str(e)}",
-                brief="Failed to grep",
+                brief=f"Failed to grep | {_format_cmd(params)}",
             )
 
     async def backup_grep(self, params: Params) -> ToolReturnValue:
@@ -781,7 +787,7 @@ class Grep(CallableTool2[Params]):
             if not params.pattern:
                 return ToolError(
                     message="Pattern cannot be empty.",
-                    brief="Empty pattern",
+                    brief=f"Empty pattern | {_format_cmd(params)}",
                 )
 
             flags = 0
@@ -795,7 +801,7 @@ class Grep(CallableTool2[Params]):
             except re.error as e:
                 return ToolError(
                     message=f"Invalid regex pattern: {e}",
-                    brief="Invalid pattern",
+                    brief=f"Invalid pattern | {_format_cmd(params)}",
                 )
 
             search_path = Path(os.path.expanduser(params.path)).resolve()
@@ -805,7 +811,7 @@ class Grep(CallableTool2[Params]):
             if not is_within_workspace(logical_search_path, self._work_dir, self._additional_dirs):
                 return ToolError(
                     message=f"`{params.path}` is outside the workspace.",
-                    brief="Path outside workspace",
+                    brief=f"Path outside workspace | {_format_cmd(params)}",
                 )
 
             # Translate search path through VFS for I/O
@@ -818,7 +824,7 @@ class Grep(CallableTool2[Params]):
             if not search_path.exists():
                 return ToolError(
                     message=f"`{params.path}` does not exist.",
-                    brief="Path not found",
+                    brief=f"Path not found | {_format_cmd(params)}",
                 )
 
             output_mode = params.output_mode
@@ -963,10 +969,10 @@ class Grep(CallableTool2[Params]):
                 no_match_msg = "No matches found"
                 if message:
                     no_match_msg = f"{no_match_msg}. {message}"
-                return builder.ok(message=no_match_msg)
+                return builder.ok(message=no_match_msg, brief=_format_cmd(params))
 
             builder.write(output)
-            return builder.ok(message=message)
+            return builder.ok(message=message, brief=_format_cmd(params))
 
         except Exception as e:
             logger.warning(
@@ -977,7 +983,7 @@ class Grep(CallableTool2[Params]):
             )
             return ToolError(
                 message=f"Failed to grep. Error: {str(e)}",
-                brief="Failed to grep",
+                brief=f"Failed to grep | {_format_cmd(params)}",
             )
 
     def _collect_files(self, search_path: Path, params: Params) -> list[Path]:

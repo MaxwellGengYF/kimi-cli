@@ -138,6 +138,7 @@ class StepMemory(CallableTool2[Params]):
         return ToolOk(
             output=f"Step #{seq} saved: {brief_display}",
             message=f"{warning}; step recorded" if warning else "Step recorded",
+            brief=f"Saved step #{seq}: {brief_display}",
         )
 
     async def _load(self, params: Params) -> ToolReturnValue:
@@ -178,6 +179,7 @@ class StepMemory(CallableTool2[Params]):
             return ToolOk(
                 output="No step history found.",
                 message=warning or "Empty history",
+                brief="No step history found",
             )
 
         msg_parts: list[str] = []
@@ -190,4 +192,5 @@ class StepMemory(CallableTool2[Params]):
         return ToolOk(
             output="\n\n".join(parts),
             message=message,
+            brief=message,
         )
