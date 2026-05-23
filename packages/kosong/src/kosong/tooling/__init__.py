@@ -146,12 +146,13 @@ class ToolOk(ToolReturnValue):
         output: str | ContentPart | list[ContentPart],
         message: str = "",
         brief: str = "",
+        display_block: DisplayBlock | None = None
     ) -> None:
         super().__init__(
             is_error=False,
             output=([output] if isinstance(output, ContentPart) else output),
             message=message,
-            display=[BriefDisplayBlock(text=brief)] if brief else [],
+            display=[display_block] if display_block is not None else ([BriefDisplayBlock(text=brief)] if brief else []),
         )
 
 

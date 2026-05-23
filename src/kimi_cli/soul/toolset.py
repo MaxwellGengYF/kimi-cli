@@ -75,36 +75,6 @@ print_tool_func = print
 
 _temp_folder: Path = Path.home() / '.kimi' / 'logs'
 
-def _format_display_blocks(display: list[Any]) -> str | None:
-    if not display:
-        return None
-    parts: list[str] = []
-    for block in display:
-        if isinstance(block, BriefDisplayBlock):
-            if block.text:
-                parts.append(f"\033[0;90m{block.text}\033[0m")
-        elif isinstance(block, DiffDisplayBlock):
-            parts.append(f"\033[0;94mDiff: {block.path}\033[0m")
-            for line in block.old_text.splitlines():
-                parts.append(f"\033[0;91m- {line}\033[0m")
-            for line in block.new_text.splitlines():
-                parts.append(f"\033[0;92m+ {line}\033[0m")
-        elif isinstance(block, TodoDisplayBlock):
-            for item in block.items:
-                status = item.status.replace("_", " ").lower()
-                if status == "done":
-                    parts.append(f"\033[0;90m- ~~{item.title}~~\033[0m")
-                elif status == "in progress":
-                    parts.append(f"\033[0;93m- {item.title} \u2190\033[0m")
-                else:
-                    parts.append(f"\033[0;90m- {item.title}\033[0m")
-        elif isinstance(block, ShellDisplayBlock):
-            parts.append(f"\033[0;96m$ {block.command}\033[0m")
-        elif isinstance(block, BackgroundTaskDisplayBlock):
-            parts.append(f"\033[0;90m[{block.status}] {block.task_id}: {block.description}\033[0m")
-    return ("\n".join(parts)).strip() if parts else None
-
-
 def _export_to_temp_file(content: str, ext:str='.log') -> str:
     global _temp_idx
     """Export content to a temporary file and return the file path."""
@@ -381,27 +351,28 @@ class KimiToolset:
                             self._recent_command_calls.pop(0)
                     self._recent_command_calls.append((call_key_hash, cmds_len))
 
-                    # Colorful print, Add by maxwell
-                    text = ''
-                    lst = [f'{tool_call.function.name}: [']
-                    is_first = True
-                    for k, v in tool_input_dict.items():
-                        if is_first:
-                            is_first = False
-                        else:
-                            lst.append(' | ')
-                        value = str(v)
-                        if len(value) > 32:
-                            value = f'{value[:32]}...'
-                        value = value.replace('\n', ' ')
-                        lst.append(f'{k}: {value}')
-                    lst.append(']')
-                    text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
-                    print_tool_func(text)
                     ret = await tool.call(arguments)
-                    display_text = _format_display_blocks(ret.display)
-                    if display_text:
-                        print_tool_func(display_text)
+                    # Colorful print, Add by maxwell
+                    # text = ''
+                    # lst = [f'{tool_call.function.name}: [']
+                    # is_first = True
+                    # for k, v in tool_input_dict.items():
+                    #     if is_first:
+                    #         is_first = False
+                    #     else:
+                    #         lst.append(' | ')
+                    #     value = str(v)
+                    #     if len(value) > 32:
+                    #         value = f'{value[:32]}...'
+                    #     value = value.replace('\n', ' ')
+                    #     lst.append(f'{k}: {value}')
+                    # lst.append(']')
+                    # text = f"\033[0;95m{''.join(lst)}\033[0m" # BRIGHT_MAGENTA
+                    # print_tool_func(text)
+                    # from kimix.base import _format_display_blocks
+                    # display_text = _format_display_blocks(ret.display)
+                    # if display_text:
+                    #     print_tool_func(display_text)
                     if isinstance(ret.output, str):
                         ret.output = sanitize_for_tokenizer(ret.output)
                     elif isinstance(ret.output, list):
@@ -482,14 +453,6 @@ class KimiToolset:
                     self._recent_command_calls = [
                         (key, count) for key, count in self._recent_command_calls if key != call_key_hash
                     ]
-                    time_text = f'LOG: [{tool_call.function.name} spent {(tool_elapsed):.2f} seconds]'
-                    text = f"\033[0;94m{time_text}\033[0m"
-                else:
-                    err_msg = ret.brief
-                    if not err_msg:
-                        err_msg = ret.message
-                    text = f"\033[0;91m{tool_call.function.name} error: {err_msg} [spent {(tool_elapsed):.2f} seconds]\033[0m" # BRIGHT_MAGENTA
-                print_tool_func(text)
                 logger.info(
                     "Tool {tool_name} completed in {elapsed:.1f}s (call_id={call_id})",
                     tool_name=tool_call.function.name,
