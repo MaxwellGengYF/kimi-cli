@@ -380,7 +380,7 @@ class KimiSoul:
             turn_id=turn_id,
             score=score,
         )
-        return DynamicInjection(content=citation)
+        return DynamicInjection(type="auto_retrieved_history", content=citation)
 
     async def _notify_injection_providers_compacted(self) -> None:
         """Notify all injection providers that the context has been compacted.
