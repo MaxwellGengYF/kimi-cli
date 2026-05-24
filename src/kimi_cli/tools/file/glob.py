@@ -17,7 +17,6 @@ from kimi_cli.utils.path import (
     is_within_directory,
     is_within_workspace,
     kaos_path_from_user_input,
-    list_directory,
 )
 MAX_MATCHES = 1000
 GLOB_DESC_PATH = Path(__file__).parent / "glob.md"
@@ -61,42 +60,6 @@ class Glob(CallableTool2[Params]):
         self._skills_dirs = runtime.skills_dirs
         self._vfs = vfs
 
-    async def _validate_pattern(self, pattern: str) -> ToolError | None:
-        """Validate that the pattern is safe to use."""
-        # Normalize backslashes for consistent cross-platform validation
-        norm = pattern.replace("\\", "/")
-        if not norm.startswith("**"):
-            return None
-
-        ls_result = await list_directory(self._work_dir)
-
-        if norm == "**/**" or norm == "**/*":
-            return ToolError(
-                output=ls_result,
-                message=(
-                    f"Pattern `{pattern}` starts with `**`, which is disallowed. "
-                    "Use a more specific pattern. Top-level items in working directory:"
-                ),
-                brief=f"Unsafe pattern: {pattern}",
-            )
-
-        # For **/<file-name>, also check if the file exists at the root directory
-        if norm.startswith("**/") and "/" not in norm[3:]:
-            file_name = norm[3:]
-            root_file = self._work_dir / file_name
-            if await root_file.exists():
-                rel_path = str(root_file.relative_to(self._work_dir))
-                ls_result = f"{ls_result}\n{rel_path}"
-
-        return ToolError(
-            output=ls_result,
-            message=(
-                f"Pattern `{pattern}` starts with `**`, which is disallowed. "
-                "Use a more specific pattern. Top-level items in working directory:"
-            ),
-            brief=f"Unsafe pattern: {pattern}",
-        )
-
     # async def _validate_directory(self, directory: KaosPath) -> ToolError | None:
     #     """Validate that the directory is safe to search."""
     #     resolved_dir = directory.canonical()
@@ -121,10 +84,17 @@ class Glob(CallableTool2[Params]):
     @override
     async def __call__(self, params: Params) -> ToolReturnValue:
         try:
-            # Validate pattern safety
-            pattern_error = await self._validate_pattern(params.pattern)
-            if pattern_error:
-                return pattern_error
+            # Detect unsafe patterns and compute fallback
+            norm = params.pattern.replace("\\", "/")
+            is_unsafe = norm.startswith("**")
+            if is_unsafe:
+                if norm.startswith("**/"):
+                    pattern = norm[3:] if norm[3:] else "*"
+                else:
+                    pattern = "*"
+            else:
+                pattern = params.pattern
+
             dir_path = KaosPath(str(kaos_path_from_user_input(params.directory)) if params.directory else str(self._work_dir))
             dir_path = await resolve_vfs(str(dir_path), self._vfs, for_write=False)
             if not await dir_path.exists():
@@ -143,7 +113,7 @@ class Glob(CallableTool2[Params]):
             truncated = False
             try:
                 async with asyncio.timeout(10):
-                    async for match in dir_path.glob(params.pattern):
+                    async for match in dir_path.glob(pattern):
                         if not params.include_dirs and not await match.is_file():
                             continue
                         matches.append(match)
@@ -157,11 +127,23 @@ class Glob(CallableTool2[Params]):
             # Sort for consistent output
             matches.sort()
 
+            output = "\n".join(str(p.relative_to(dir_path)) for p in matches)
+
+            if is_unsafe:
+                return ToolError(
+                    output=output,
+                    message=(
+                        f"Pattern `{params.pattern}` starts with `**`, which is disallowed. "
+                        f"Fallback result for `{pattern}`:"
+                    ),
+                    brief=f"Unsafe pattern: {params.pattern}",
+                )
+
             # Build message
             if len(matches) > 0:
-                message = f"Found {len(matches)} matches for pattern `{params.pattern}`."
+                message = f"Found {len(matches)} matches for pattern `{pattern}`."
             else:
-                message = f"No matches found for pattern `{params.pattern}`."
+                message = f"No matches found for pattern `{pattern}`."
 
             if truncated:
                 message += (
@@ -170,7 +152,7 @@ class Glob(CallableTool2[Params]):
                 )
 
             return ToolOk(
-                output="\n".join(str(p.relative_to(dir_path)) for p in matches),
+                output=output,
                 message=message,
                 brief=f"Glob {dir_path}",
             )

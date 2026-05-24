@@ -55,12 +55,15 @@ async def test_glob_multiple_matches(glob_tool: Glob, test_files: KaosPath):
 
 
 async def test_glob_recursive_pattern_prohibited(glob_tool: Glob, test_files: KaosPath):
-    """Test that recursive glob pattern starting with **/ is prohibited."""
+    """Test that recursive glob pattern starting with **/ falls back to root-level search."""
     result = await glob_tool(Params(pattern="**/*.py", directory=str(test_files)))
 
     assert result.is_error
-    assert "starts with '**', which is not allowed" in result.message
+    assert "starts with `**`, which is disallowed" in result.message
+    assert "Fallback result" in result.message
     assert "Unsafe pattern" in result.brief
+    # Fallback is *.py at root
+    assert "setup.py" in result.output
 
 
 async def test_glob_safe_recursive_pattern(glob_tool: Glob, test_files: KaosPath):
@@ -225,11 +228,11 @@ async def test_glob_max_matches_limit(glob_tool: Glob, temp_work_dir: KaosPath):
     output_lines = [line for line in result.output.split("\n") if line.strip()]
     assert len(output_lines) == MAX_MATCHES
     # Should contain warning message
-    assert f"Only the first {MAX_MATCHES} matches are returned" in result.message
+    assert f"Showing first {MAX_MATCHES} matches" in result.message
 
 
 async def test_glob_enhanced_double_star_validation(glob_tool: Glob, temp_work_dir: KaosPath):
-    """Test enhanced ** pattern validation with directory listing."""
+    """Test enhanced ** pattern validation returns fallback glob result."""
     # Create some top-level files and directories for listing
     await (temp_work_dir / "file1.txt").write_text("content1")
     await (temp_work_dir / "file2.py").write_text("content2")
@@ -239,14 +242,14 @@ async def test_glob_enhanced_double_star_validation(glob_tool: Glob, temp_work_d
     result = await glob_tool(Params(pattern="**/*.txt", directory=str(temp_work_dir)))
 
     assert result.is_error
-    assert "starts with '**', which is not allowed" in result.message
-    assert "Use a more specific pattern" in result.message
-    # Should include directory listing
+    assert "starts with `**`, which is disallowed" in result.message
+    assert "Fallback result" in result.message
+    # Fallback is *.txt at root
     assert isinstance(result.output, str)
     assert "file1.txt" in result.output
-    assert "file2.py" in result.output
-    assert "src" in result.output
-    assert "docs" in result.output
+    assert "file2.py" not in result.output
+    assert "src" not in result.output
+    assert "docs" not in result.output
 
 
 async def test_glob_exactly_max_matches(glob_tool: Glob, temp_work_dir: KaosPath):
@@ -290,11 +293,13 @@ async def test_glob_complex_pattern(glob_tool: Glob, test_files: KaosPath):
 
 async def test_glob_wildcard_with_double_star_patterns(glob_tool: Glob, test_files: KaosPath):
     """Test various patterns with ** that are allowed."""
-    # Test pattern with ** in the middle
+    # Test unsafe pattern with ** at start falls back to main/*.py (no matches at root)
     result = await glob_tool(Params(pattern="**/main/*.py", directory=str(test_files)))
 
     assert result.is_error
-    assert "starts with '**', which is not allowed" in result.message
+    assert "starts with `**`, which is disallowed" in result.message
+    assert "Fallback result" in result.message
+    assert result.output == ""
 
     # Test pattern with ** not at the beginning
     result = await glob_tool(Params(pattern="src/**/test_*.py", directory=str(test_files)))
@@ -316,10 +321,12 @@ async def test_glob_pattern_edge_cases(glob_tool: Glob, test_files: KaosPath):
     result = await glob_tool(Params(pattern="*.py", directory=str(test_files)))
     assert not result.is_error
 
-    # Test pattern that starts with **/
+    # Test pattern that starts with **/ falls back to *.txt (no .txt files at root)
     result = await glob_tool(Params(pattern="**/*.txt", directory=str(test_files)))
     assert result.is_error
-    assert "starts with '**', which is not allowed" in result.message
+    assert "starts with `**`, which is disallowed" in result.message
+    assert "Fallback result" in result.message
+    assert result.output == ""
 
 
 async def test_glob_hidden_files(glob_tool: Glob, temp_work_dir: KaosPath):
@@ -374,7 +381,7 @@ async def test_glob_empty_pattern(glob_tool: Glob, temp_work_dir: KaosPath):
 
     result = await glob_tool(Params(pattern="", directory=str(temp_work_dir)))
     assert result.is_error
-    assert "Failed to search" in result.message
+    assert "Glob failed" in result.message
 
 
 async def test_glob_include_dirs_true(glob_tool: Glob, temp_work_dir: KaosPath):
@@ -401,7 +408,7 @@ async def test_glob_exception_handling(glob_tool: Glob, temp_work_dir: KaosPath)
         result = await glob_tool(Params(pattern="*.txt", directory=str(temp_work_dir)))
 
     assert result.is_error
-    assert "Failed to search" in result.message
+    assert "Glob failed" in result.message
     assert "permission denied" in result.message
 
 
@@ -444,3 +451,47 @@ async def test_glob_deeply_nested_pattern(glob_tool: Glob, temp_work_dir: KaosPa
     result = await glob_tool(Params(pattern="a/**/deep.txt", directory=str(temp_work_dir)))
     assert not result.is_error
     assert "deep.txt" in result.output
+
+
+async def test_glob_unsafe_fallback_star(glob_tool: Glob, test_files: KaosPath):
+    """Test unsafe **/* falls back to * and returns root-level items as ToolError."""
+    result = await glob_tool(Params(pattern="**/*", directory=str(test_files)))
+
+    assert result.is_error
+    assert "starts with `**`, which is disallowed" in result.message
+    assert "Fallback result" in result.message
+    assert "Unsafe pattern" in result.brief
+    # Fallback * at root should include top-level files and dirs
+    assert "README.md" in result.output
+    assert "setup.py" in result.output
+    assert "src" in result.output
+    assert "docs" in result.output
+
+
+async def test_glob_unsafe_fallback_double_star(glob_tool: Glob, test_files: KaosPath):
+    """Test unsafe **/** falls back to * and returns root-level items as ToolError."""
+    result = await glob_tool(Params(pattern="**/**", directory=str(test_files)))
+
+    assert result.is_error
+    assert "starts with `**`, which is disallowed" in result.message
+    assert "Fallback result" in result.message
+    # Fallback * at root should include top-level files and dirs
+    assert "README.md" in result.output
+    assert "setup.py" in result.output
+    assert "src" in result.output
+    assert "docs" in result.output
+
+
+async def test_glob_unsafe_fallback_md(glob_tool: Glob, test_files: KaosPath):
+    """Test unsafe **/*.md falls back to *.md and returns root-level .md files as ToolError."""
+    result = await glob_tool(Params(pattern="**/*.md", directory=str(test_files)))
+
+    assert result.is_error
+    assert "starts with `**`, which is disallowed" in result.message
+    assert "Fallback result" in result.message
+    assert "Unsafe pattern" in result.brief
+    # Fallback *.md at root should only match README.md
+    assert "README.md" in result.output
+    # Should not match docs/*.md since fallback is not recursive
+    assert "guide.md" not in result.output
+    assert "api.md" not in result.output
