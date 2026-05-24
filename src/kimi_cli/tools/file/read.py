@@ -12,7 +12,7 @@ from kimi_cli.vfs import VFS
 from .utils import resolve_vfs
 from kimi_cli.tools.utils import load_desc, truncate_line
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import is_within_workspace, kaos_path_from_user_input
+from kimi_cli.utils.path import is_within_directory, is_within_workspace, kaos_path_from_user_input
 from kimi_cli.utils.sensitive import is_sensitive_file
 
 MAX_LINES = 1000
@@ -126,7 +126,10 @@ class ReadFile(CallableTool2[Params]):
         try:
             p = kaos_path_from_user_input(params.path)
             logical_path = p
+            _outside = not is_within_directory(logical_path.canonical(), self._work_dir)
             if err := await self._validate_path(p):
+                if _outside:
+                    err.message = f"[out of work-dir] {err.message}"
                 return err
 
             p = await resolve_vfs(params.path, self._vfs, for_write=False)
@@ -134,7 +137,7 @@ class ReadFile(CallableTool2[Params]):
             if is_sensitive_file(str(logical_path)):
                 return ToolError(
                     message=(
-                        f"`{params.path}` appears to contain secrets "
+                        f"{'[out of work-dir] ' if _outside else ''}`{params.path}` appears to contain secrets "
                         "(matched sensitive file pattern). "
                         "Reading this file is blocked to protect credentials."
                     ),
@@ -143,12 +146,12 @@ class ReadFile(CallableTool2[Params]):
 
             if not await p.exists():
                 return ToolError(
-                    message=f"`{params.path}` does not exist.",
+                    message=f"{'[out of work-dir] ' if _outside else ''}`{params.path}` does not exist.",
                     brief=f"File not found: {params.path}",
                 )
             if not await p.is_file():
                 return ToolError(
-                    message=f"`{params.path}` is not a file.",
+                    message=f"{'[out of work-dir] ' if _outside else ''}`{params.path}` is not a file.",
                     brief=f"Invalid path: {params.path}"
                 )
 
@@ -157,7 +160,7 @@ class ReadFile(CallableTool2[Params]):
             if file_type.kind in ("image", "video"):
                 return ToolError(
                     message=(
-                        f"`{params.path}` is a {file_type.kind} file. "
+                        f"{'[out of work-dir] ' if _outside else ''}`{params.path}` is a {file_type.kind} file. "
                         "Use other appropriate tools to read image or video files."
                     ),
                     brief=f"Unsupported file type: {params.path}",
@@ -166,7 +169,7 @@ class ReadFile(CallableTool2[Params]):
             if file_type.kind == "unknown":
                 return ToolError(
                     message=(
-                        f"`{params.path}` seems not readable. "
+                        f"{'[out of work-dir] ' if _outside else ''}`{params.path}` seems not readable. "
                         "You may need to read it with proper shell commands, Python tools "
                         "or MCP tools if available. "
                         "If you read/operate it with Python, you MUST ensure that any "
@@ -185,11 +188,18 @@ class ReadFile(CallableTool2[Params]):
 
             if isinstance(result, ToolOk) and isinstance(result.output, str):
                 result.output = result.output[params.char_offset:params.max_char]
+            if _outside and isinstance(result, ToolReturnValue):
+                result.message = f"[out of work-dir] {result.message}"
             return result
         except Exception as e:
             logger.warning("ReadFile failed: {path}: {error}", path=params.path, error=e)
+            _outside_ex = False
+            try:
+                _outside_ex = not is_within_directory(kaos_path_from_user_input(params.path).canonical(), self._work_dir)
+            except Exception:
+                pass
             return ToolError(
-                message=f"Failed to read {params.path}. Error: {e}",
+                message=f"{'[out of work-dir] ' if _outside_ex else ''}Failed to read {params.path}. Error: {e}",
                 brief=f"Failed to read file: {params.path}",
             )
 

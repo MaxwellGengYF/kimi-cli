@@ -17,7 +17,7 @@ from kimi_cli.tools.file.check_fmt import check_json_text, check_toml_text, chec
 from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli import logger
-from kimi_cli.utils.path import is_within_workspace, kaos_path_from_user_input
+from kimi_cli.utils.path import is_within_directory, is_within_workspace, kaos_path_from_user_input
 from kimi_cli.vfs import VFS
 from .utils import resolve_vfs
 
@@ -116,15 +116,17 @@ class WriteFile(CallableTool2[Params]):
         try:
             p = kaos_path_from_user_input(params.path)
             logical_path = p
+            _outside = not is_within_directory(logical_path.canonical(), self._work_dir)
             err, path_is_inside = await self._validate_path(logical_path)
             if err:
+                err.message = f"[out of work-dir] {err.message}" if _outside else err.message
                 return err
 
             p = await resolve_vfs(params.path, self._vfs, for_write=True)
 
             if await p.is_dir():
                 return ToolError(
-                    message=f"`{p}` is a directory, not a file.",
+                    message=f"{'[out of work-dir] ' if _outside else ''}`{p}` is a directory, not a file.",
                     brief="Path is a directory",
                 )
 
@@ -134,6 +136,8 @@ class WriteFile(CallableTool2[Params]):
                 plan_file_path_getter=self._plan_file_path_getter,
             )
             if isinstance(plan_target, ToolError):
+                if _outside:
+                    plan_target.message = f"[out of work-dir] {plan_target.message}"
                 return plan_target
 
             is_plan_file_write = plan_target.is_plan_target
@@ -144,7 +148,7 @@ class WriteFile(CallableTool2[Params]):
                 await p.parent.mkdir(parents=True, exist_ok=True)
             except OSError as e:
                 return ToolError(
-                    message=f"Failed to create parent directory for {p}: {e}",
+                    message=f"{'[out of work-dir] ' if _outside else ''}Failed to create parent directory for {p}: {e}",
                     brief="Parent directory not found",
                 )
 
@@ -152,7 +156,7 @@ class WriteFile(CallableTool2[Params]):
             if params.mode not in ["overwrite", "append"]:
                 return ToolError(
                     message=(
-                        f"Invalid write mode: `{params.mode}`. "
+                        f"{'[out of work-dir] ' if _outside else ''}Invalid write mode: `{params.mode}`. "
                         "Mode must be either `overwrite` or `append`."
                     ),
                     brief="Invalid write mode",
@@ -250,14 +254,14 @@ class WriteFile(CallableTool2[Params]):
 
             if fmt_error:
                 return ToolError(
-                    message=f"File successfully {action_desc}, but {fmt_error}",
+                    message=f"{'[out of work-dir] ' if _outside else ''}File successfully {action_desc}, but {fmt_error}",
                     brief="Format validation failed",
                 )
             return ToolReturnValue(
                 is_error=False,
                 output="",
                 message=(
-                    f"File successfully {action_desc}. Current size: {file_size} bytes."
+                    f"{'[out of work-dir] ' if _outside else ''}File successfully {action_desc}. Current size: {file_size} bytes."
                 ),
                 display=diff_blocks,
             )
@@ -266,7 +270,12 @@ class WriteFile(CallableTool2[Params]):
             logger.warning(
                 "WriteFile failed: {path}: {error}", path=params.path, error=e
             )
+            _outside_ex = False
+            try:
+                _outside_ex = not is_within_directory(kaos_path_from_user_input(params.path).canonical(), self._work_dir)
+            except Exception:
+                pass
             return ToolError(
-                message=f"Failed to write to {params.path}. Error: {e}",
+                message=f"{'[out of work-dir] ' if _outside_ex else ''}Failed to write to {params.path}. Error: {e}",
                 brief="Failed to write file",
             )

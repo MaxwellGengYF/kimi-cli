@@ -22,7 +22,7 @@ from kimi_cli.tools.file.plan_mode import inspect_plan_edit_target
 from kimi_cli.tools.utils import load_desc
 from kimi_cli.utils.diff import build_diff_blocks
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import is_within_workspace, kaos_path_from_user_input
+from kimi_cli.utils.path import is_within_directory, is_within_workspace, kaos_path_from_user_input
 from kimi_cli.vfs import VFS
 from .utils import resolve_vfs
 
@@ -271,8 +271,11 @@ class EditFile(CallableTool2[Params]):
         try:
             p = kaos_path_from_user_input(params.path)
             logical_path = p
+            _outside = not is_within_directory(logical_path.canonical(), self._work_dir)
             err, _ = await self._validate_path(p)
             if err:
+                if _outside:
+                    err.message = f"[out of work-dir] {err.message}"
                 return err
 
             p = await resolve_vfs(params.path, self._vfs, for_write=True)
@@ -283,6 +286,8 @@ class EditFile(CallableTool2[Params]):
                 plan_file_path_getter=self._plan_file_path_getter,
             )
             if isinstance(plan_target, ToolError):
+                if _outside:
+                    plan_target.message = f"[out of work-dir] {plan_target.message}"
                 return plan_target
 
             is_plan_file_edit = plan_target.is_plan_target
@@ -291,20 +296,21 @@ class EditFile(CallableTool2[Params]):
                 st = await p.stat()
                 if not S_ISREG(st.st_mode):
                     return ToolError(
-                        message=f"`{logical_path}` is not a file.",
+                        message=f"{'[out of work-dir] ' if _outside else ''}`{logical_path}` is not a file.",
                         brief="Invalid path",
                     )
             except FileNotFoundError:
                 if is_plan_file_edit:
                     return ToolError(
                         message=(
+                            f"{'[out of work-dir] ' if _outside else ''}"
                             "The current plan file does not exist yet. "
                             "Use WriteFile to create it before calling EditFile."
                         ),
                         brief="Plan file not created",
                     )
                 return ToolError(
-                    message=f"`{logical_path}` does not exist.",
+                    message=f"{'[out of work-dir] ' if _outside else ''}`{logical_path}` does not exist.",
                     brief="File not found",
                 )
 
@@ -329,7 +335,7 @@ class EditFile(CallableTool2[Params]):
 
             # Check if any changes were made
             if new_content == original_content:
-                msg = "No replacements were made. The old string was not found in the file."
+                msg = f"{'[out of work-dir] ' if _outside else ''}No replacements were made. The old string was not found in the file."
                 if suggestion:
                     msg += f"\n\nDid you mean:\n  {suggestion}"
                 return ToolError(
@@ -390,7 +396,7 @@ class EditFile(CallableTool2[Params]):
 
             if fmt_error:
                 return ToolError(
-                    message=f"File successfully edited, but {fmt_error}",
+                    message=f"{'[out of work-dir] ' if _outside else ''}File successfully edited, but {fmt_error}",
                     brief="Format validation failed",
                 )
 
@@ -398,7 +404,7 @@ class EditFile(CallableTool2[Params]):
                 is_error=False,
                 output="",
                 message=(
-                    f"File successfully edited. "
+                    f"{'[out of work-dir] ' if _outside else ''}File successfully edited. "
                     f"Applied {len(edits)} edit(s) with {total_replacements} total replacement(s)."
                 ),
                 display=diff_blocks,
@@ -406,8 +412,13 @@ class EditFile(CallableTool2[Params]):
 
         except (OSError, ValueError, RuntimeError) as e:
             logger.warning("EditFile failed: {path}: {error}", path=params.path, error=e)
+            _outside_ex = False
+            try:
+                _outside_ex = not is_within_directory(kaos_path_from_user_input(params.path).canonical(), self._work_dir)
+            except Exception:
+                pass
             return ToolError(
-                message=f"Failed to edit. Error: {e}",
+                message=f"{'[out of work-dir] ' if _outside_ex else ''}Failed to edit. Error: {e}",
                 brief="Failed to edit file",
             )
         except MemoryError:

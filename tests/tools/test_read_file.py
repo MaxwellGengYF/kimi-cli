@@ -100,7 +100,7 @@ async def test_read_nonexistent_file(read_file_tool: ReadFile, temp_work_dir: Ka
     result = await read_file_tool(Params(path=str(nonexistent_file)))
     assert result.is_error
     assert result.message == snapshot(f"`{nonexistent_file}` does not exist.")
-    assert result.brief == snapshot("File not found")
+    assert result.brief == snapshot('File not found: C:\\Users\\vip\\AppData\\Local\\Temp\\tmp0yhmp0bk\\nonexistent.txt')
 
 
 async def test_read_directory_instead_of_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
@@ -108,7 +108,7 @@ async def test_read_directory_instead_of_file(read_file_tool: ReadFile, temp_wor
     result = await read_file_tool(Params(path=str(temp_work_dir)))
     assert result.is_error
     assert result.message == snapshot(f"`{temp_work_dir}` is not a file.")
-    assert result.brief == snapshot("Invalid path")
+    assert result.brief == snapshot('Invalid path: C:\\Users\\vip\\AppData\\Local\\Temp\\tmpaya1setp')
 
 
 async def test_read_with_relative_path(
@@ -165,7 +165,7 @@ async def test_read_image_file(read_file_tool: ReadFile, temp_work_dir: KaosPath
     assert result.message == snapshot(
         f"`{image_file}` is a image file. Use other appropriate tools to read image or video files."
     )
-    assert result.brief == snapshot("Unsupported file type")
+    assert result.brief == snapshot('Unsupported file type: C:\\Users\\vip\\AppData\\Local\\Temp\\tmp72_gnsw6\\sample.png')
 
 
 async def test_read_extensionless_image_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
@@ -180,7 +180,7 @@ async def test_read_extensionless_image_file(read_file_tool: ReadFile, temp_work
     assert result.message == snapshot(
         f"`{image_file}` is a image file. Use other appropriate tools to read image or video files."
     )
-    assert result.brief == snapshot("Unsupported file type")
+    assert result.brief == snapshot('Unsupported file type: C:\\Users\\vip\\AppData\\Local\\Temp\\tmps91y3384\\sample')
 
 
 async def test_read_video_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
@@ -195,7 +195,7 @@ async def test_read_video_file(read_file_tool: ReadFile, temp_work_dir: KaosPath
     assert result.message == snapshot(
         f"`{video_file}` is a video file. Use other appropriate tools to read image or video files."
     )
-    assert result.brief == snapshot("Unsupported file type")
+    assert result.brief == snapshot('Unsupported file type: C:\\Users\\vip\\AppData\\Local\\Temp\\tmpmy73jkqt\\sample.mp4')
 
 
 async def test_read_line_offset_beyond_file_length(read_file_tool: ReadFile, sample_file: KaosPath):
@@ -358,6 +358,56 @@ async def test_max_lines_boundary(read_file_tool: ReadFile, temp_work_dir: KaosP
     assert len(output_lines) == MAX_LINES
 
 
+# --- [out of work-dir] warning tests ---
+
+
+async def test_read_outside_work_dir_has_warning(
+    read_file_tool: ReadFile, outside_file: Path
+):
+    """Reading outside work-dir should include [out of work-dir] in success message."""
+    outside_file.write_text("outside content", encoding="utf-8")
+    result = await read_file_tool(Params(path=str(outside_file)))
+    assert not result.is_error
+    assert "[out of work-dir]" in result.message
+
+
+async def test_read_inside_work_dir_no_warning(read_file_tool: ReadFile, sample_file: KaosPath):
+    """Reading inside work-dir should NOT include [out of work-dir] in message."""
+    result = await read_file_tool(Params(path=str(sample_file)))
+    assert not result.is_error
+    assert "[out of work-dir]" not in result.message
+
+
+async def test_read_outside_work_dir_nonexistent_has_warning(
+    read_file_tool: ReadFile, outside_file: Path
+):
+    """Error reading non-existent outside file should include [out of work-dir]."""
+    result = await read_file_tool(Params(path=str(outside_file)))
+    assert result.is_error
+    assert "[out of work-dir]" in result.message
+
+
+async def test_read_outside_work_dir_directory_has_warning(
+    read_file_tool: ReadFile
+):
+    """Reading a directory outside work-dir should include [out of work-dir]."""
+    # Use /tmp or equivalent that exists but is outside work-dir
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await read_file_tool(Params(path=tmpdir))
+        assert result.is_error
+        assert "[out of work-dir]" in result.message
+
+
+async def test_read_outside_relative_path_error_has_warning(
+    read_file_tool: ReadFile, temp_work_dir: KaosPath
+):
+    """Relative path outside workspace error should include [out of work-dir]."""
+    result = await read_file_tool(Params(path="../outside.txt"))
+    assert result.is_error
+    assert "[out of work-dir]" in result.message
+
+
 async def test_max_bytes_boundary(read_file_tool: ReadFile, temp_work_dir: KaosPath):
     """Test that reading respects the MAX_BYTES boundary."""
     # Create a file that exceeds MAX_BYTES
@@ -392,7 +442,7 @@ async def test_read_with_tilde_path_expansion(read_file_tool: ReadFile, temp_wor
         assert not result.is_error
         assert "Test content for tilde expansion" in result.output
         assert result.message == snapshot(
-            "1 lines read from file starting from line 1. Total lines in file: 1. End of file reached."
+            '[out of work-dir] 1 lines read from file starting from line 1. Total lines in file: 1. End of file reached.'
         )
     finally:
         # Clean up

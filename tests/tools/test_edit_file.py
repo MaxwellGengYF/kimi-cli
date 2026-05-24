@@ -510,3 +510,55 @@ def test_apply_edit_replace_all_no_match():
     assert content == "hello"
     assert count == 0
     assert suggestion is None
+
+
+# --- [out of work-dir] warning tests ---
+
+
+async def test_edit_outside_work_dir_has_warning(
+    edit_file_tool: EditFile, outside_file: Path
+):
+    """Editing outside work-dir should include [out of work-dir] in success message."""
+    outside_file.write_text("original content", encoding="utf-8")
+    result = await edit_file_tool(
+        Params(path=str(outside_file), edit=Edit(old="original", new="modified"))
+    )
+    assert not result.is_error
+    assert "[out of work-dir]" in result.message
+
+
+async def test_edit_inside_work_dir_no_warning(
+    edit_file_tool: EditFile, temp_work_dir: KaosPath
+):
+    """Editing inside work-dir should NOT include [out of work-dir] in message."""
+    file_path = temp_work_dir / "inside.txt"
+    await file_path.write_text("original content")
+    result = await edit_file_tool(
+        Params(path=str(file_path), edit=Edit(old="original", new="modified"))
+    )
+    assert not result.is_error
+    assert "[out of work-dir]" not in result.message
+
+
+async def test_edit_outside_work_dir_nonexistent_has_warning(
+    edit_file_tool: EditFile, outside_file: Path
+):
+    """Error editing non-existent outside file should include [out of work-dir]."""
+    result = await edit_file_tool(
+        Params(path=str(outside_file), edit=Edit(old="foo", new="bar"))
+    )
+    assert result.is_error
+    assert "[out of work-dir]" in result.message
+
+
+async def test_edit_outside_work_dir_directory_has_warning(
+    edit_file_tool: EditFile
+):
+    """Editing a directory outside work-dir should include [out of work-dir]."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        result = await edit_file_tool(
+            Params(path=tmpdir, edit=Edit(old="foo", new="bar"))
+        )
+        assert result.is_error
+        assert "[out of work-dir]" in result.message

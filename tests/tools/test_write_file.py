@@ -291,3 +291,42 @@ async def test_write_exception_during_write(runtime: Runtime, session, temp_work
     assert result.is_error
     assert "Failed to write" in result.message
     assert "disk full" in result.message
+
+
+# --- [out of work-dir] warning tests ---
+
+
+async def test_write_outside_work_dir_has_warning(write_file_tool: WriteFile, outside_file: Path):
+    """Writing outside work-dir should include [out of work-dir] in success message."""
+    result = await write_file_tool(Params(path=str(outside_file), content="content"))
+    assert not result.is_error
+    assert "[out of work-dir]" in result.message
+
+
+async def test_write_inside_work_dir_no_warning(write_file_tool: WriteFile, temp_work_dir: KaosPath):
+    """Writing inside work-dir should NOT include [out of work-dir] in message."""
+    file_path = temp_work_dir / "inside.txt"
+    result = await write_file_tool(Params(path=str(file_path), content="content"))
+    assert not result.is_error
+    assert "[out of work-dir]" not in result.message
+
+
+async def test_write_outside_work_dir_error_has_warning(
+    write_file_tool: WriteFile, outside_file: Path
+):
+    """Error writing outside work-dir should include [out of work-dir] in error message."""
+    # Make outside_file a directory to trigger an error
+    outside_dir = outside_file.parent / "outside_dir"
+    outside_dir.mkdir(parents=True, exist_ok=True)
+    result = await write_file_tool(Params(path=str(outside_dir), content="content"))
+    assert result.is_error
+    assert "[out of work-dir]" in result.message
+
+
+async def test_write_outside_relative_path_error_has_warning(
+    write_file_tool: WriteFile, temp_work_dir: KaosPath
+):
+    """Relative path outside workspace error should include [out of work-dir]."""
+    result = await write_file_tool(Params(path="../outside.txt", content="content"))
+    assert result.is_error
+    assert "[out of work-dir]" in result.message

@@ -259,7 +259,7 @@ async def test_grep_output_truncation(grep_tool: Grep):
 
         assert not result.is_error
         assert isinstance(result.output, str)
-        assert result.message == snapshot("Output truncated.")
+        assert result.message == snapshot('[out of work-dir]. Output truncated.')
         assert len(result.output) < DEFAULT_MAX_CHARS + 100
 
 
@@ -1423,3 +1423,50 @@ def test_is_eagain():
     assert _is_eagain("os error 11") is True
     assert _is_eagain("Resource temporarily unavailable") is True
     assert _is_eagain("some other error") is False
+
+
+# --- [out of work-dir] warning tests ---
+
+
+@pytest.mark.asyncio
+async def test_grep_outside_work_dir_has_warning(grep_tool: Grep):
+    """Grep with path outside work-dir should include [out of work-dir] in message."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_file = Path(tmpdir) / "test.txt"
+        test_file.write_text("hello world\n")
+        result = await grep_tool(
+            Params.model_validate(
+                {"pattern": "hello", "path": tmpdir, "output_mode": "files_with_matches"}
+            )
+        )
+        assert not result.is_error
+        assert "[out of work-dir]" in result.message
+
+
+@pytest.mark.asyncio
+async def test_grep_outside_work_dir_nonexistent_has_warning(grep_tool: Grep):
+    """Grep with non-existent outside path should include [out of work-dir]."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        nonexistent = str(Path(tmpdir) / "nonexistent")
+        result = await grep_tool(
+            Params.model_validate(
+                {"pattern": "hello", "path": nonexistent, "output_mode": "files_with_matches"}
+            )
+        )
+        # May succeed with "No matches found" or error depending on rg availability
+        assert "[out of work-dir]" in result.message
+
+
+@pytest.mark.asyncio
+async def test_grep_outside_work_dir_no_matches_has_warning(grep_tool: Grep):
+    """Grep outside work-dir with no matches should include [out of work-dir]."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_file = Path(tmpdir) / "test.txt"
+        test_file.write_text("hello world\n")
+        result = await grep_tool(
+            Params.model_validate(
+                {"pattern": "nonexistent_pattern_xyz", "path": tmpdir, "output_mode": "files_with_matches"}
+            )
+        )
+        assert not result.is_error
+        assert "[out of work-dir]" in result.message

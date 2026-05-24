@@ -495,3 +495,35 @@ async def test_glob_unsafe_fallback_md(glob_tool: Glob, test_files: KaosPath):
     # Should not match docs/*.md since fallback is not recursive
     assert "guide.md" not in result.output
     assert "api.md" not in result.output
+
+
+# --- [out of work-dir] warning tests ---
+
+
+async def test_glob_outside_work_dir_has_warning(glob_tool: Glob):
+    """Glob with directory outside work-dir should include [out of work-dir] in message."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Create a test file in the outside directory
+        test_file = Path(tmpdir) / "test.txt"
+        test_file.write_text("content")
+        result = await glob_tool(Params(pattern="*.txt", directory=tmpdir))
+        assert not result.is_error
+        assert "[out of work-dir]" in result.message
+
+
+async def test_glob_inside_work_dir_no_warning(glob_tool: Glob, test_files: KaosPath):
+    """Glob inside work-dir should NOT include [out of work-dir] in message."""
+    result = await glob_tool(Params(pattern="*.txt", directory=str(test_files)))
+    assert not result.is_error
+    assert "[out of work-dir]" not in result.message
+
+
+async def test_glob_outside_work_dir_nonexistent_has_warning(glob_tool: Glob):
+    """Glob with non-existent outside directory should include [out of work-dir]."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        nonexistent = str(Path(tmpdir) / "nonexistent")
+        result = await glob_tool(Params(pattern="*", directory=nonexistent))
+        assert result.is_error
+        assert "[out of work-dir]" in result.message
