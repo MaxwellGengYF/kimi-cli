@@ -369,19 +369,22 @@ class Runtime:
         )
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@dataclass(frozen=False, slots=True, kw_only=True)
 class Agent:
     """The loaded agent."""
 
     name: str
     system_prompt: str | Callable[[Runtime, bool], str]
+    system_prompt_cached: str | None = None
     toolset: Toolset
     runtime: Runtime
     """Each agent has its own runtime, which should be derived from its main agent."""
 
     def get_system_prompt(self, is_compacting: bool = False) -> str:
         if callable(self.system_prompt):
-            return self.system_prompt(self.runtime, is_compacting)
+            if self.system_prompt_cached is None or is_compacting:
+                self.system_prompt_cached = self.system_prompt(self.runtime, is_compacting)
+            return self.system_prompt_cached
         return self.system_prompt
 
 
@@ -506,7 +509,7 @@ async def load_agent(
         name=agent_spec.name,
         system_prompt=system_prompt,
         toolset=toolset,
-        runtime=runtime,
+        runtime=runtime
     )
 
 
