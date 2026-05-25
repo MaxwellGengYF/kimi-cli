@@ -41,6 +41,16 @@ if TYPE_CHECKING:
         _: RetryableChatProvider = openai_legacy
 
 
+def _reasoning_effort_to_extra_body_level(reasoning_effort: ReasoningEffort | Omit | None) -> str:
+    """Map ReasoningEffort to the three-level effort string for extra_body.reasoning.effort."""
+    if reasoning_effort is None or isinstance(reasoning_effort, Omit):
+        return "no_think"
+    if reasoning_effort in ("low", "minimal"):
+        return "low"
+    # medium, high, xhigh → high
+    return "high"
+
+
 class OpenAILegacy:
     """
     A chat provider that uses the OpenAI Chat Completions API.
@@ -139,17 +149,26 @@ class OpenAILegacy:
             if has_think_part:
                 reasoning_effort = "medium"
 
+        reasoning_enabled = reasoning_effort is not None and not isinstance(reasoning_effort, Omit)
+        extra_body_level = _reasoning_effort_to_extra_body_level(reasoning_effort)
         extra_body: dict[str, Any] = {
             "thinking": {
-                "type": "enabled" if reasoning_effort is not None and not isinstance(reasoning_effort, Omit) else "disabled",
+                "type": "enabled" if reasoning_enabled else "disabled",
+            },
+            "reasoning": {
+                "effort": extra_body_level,
+            },
+            "chat_template_kwargs": {
+                "reasoning_effort": extra_body_level
             }
         }
         if existing_extra_body := generation_kwargs.get("extra_body"):
             merged_extra_body: dict[str, Any] = {**extra_body, **existing_extra_body}
-            auto_thinking = extra_body.get("thinking")
-            user_thinking = existing_extra_body.get("thinking")
-            if auto_thinking is not None and user_thinking is not None:
-                merged_extra_body["thinking"] = {**auto_thinking, **user_thinking}
+            for key in ("thinking", "reasoning", "chat_template_kwargs"):
+                auto_val = extra_body.get(key)
+                user_val = existing_extra_body.get(key)
+                if auto_val is not None and user_val is not None:
+                    merged_extra_body[key] = {**auto_val, **user_val}
             extra_body = merged_extra_body
         generation_kwargs["extra_body"] = extra_body
         try:
