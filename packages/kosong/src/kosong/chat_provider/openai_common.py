@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import inspect
 import re
 import ssl
@@ -40,26 +39,30 @@ _CLIENT_CLOSE_TASKS: set[asyncio.Task[None]] = set()
 
 
 def _on_close_task_done(task: asyncio.Task[None]) -> None:
+    """Drain a completed close-task to suppress 'exception was never retrieved'."""
     _CLIENT_CLOSE_TASKS.discard(task)
     if task.cancelled():
         return
-    with contextlib.suppress(Exception):
+    try:
         task.exception()
+    except BaseException:  # pragma: no cover - defensive
+        pass
 
 
 async def _drain_awaitable(awaitable: Awaitable[object]) -> None:
+    """Await *awaitable*, swallowing all errors.
+
+    The sole purpose of this wrapper is to run a close-awaitable to
+    completion (or cancellation) without leaking exceptions into the
+    event-loop machinery.  Any error — ``RuntimeError`` from a
+    closed event loop, ``CancelledError`` from ``asyncio.run()``
+    shutdown, ``Exception`` from a transport hiccup — is harmless:
+    the OS will reclaim the socket.
+    """
     try:
         await awaitable
-    except RuntimeError as exc:
-        # On Windows/Python 3.14, closing an httpx.AsyncClient whose
-        # underlying transports were bound to a now-closed ProactorEventLoop
-        # raises RuntimeError('Event loop is closed').  This is harmless —
-        # the OS will reclaim the socket — so we swallow it.
-        if "Event loop is closed" in str(exc):
-            return
-        raise
-    except Exception:
-        return
+    except BaseException:
+        pass
 
 
 def close_openai_client(client: AsyncOpenAI) -> None:
