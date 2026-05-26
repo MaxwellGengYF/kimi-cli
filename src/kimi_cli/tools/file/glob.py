@@ -14,8 +14,6 @@ from kimi_cli.utils.logging import logger
 from kimi_cli.vfs import VFS
 from .utils import resolve_vfs
 from kimi_cli.utils.path import (
-    is_within_directory,
-    is_within_workspace,
     kaos_path_from_user_input,
 )
 MAX_MATCHES = 1000
@@ -96,16 +94,15 @@ class Glob(CallableTool2[Params]):
                 pattern = params.pattern
 
             dir_path = KaosPath(str(kaos_path_from_user_input(params.directory)) if params.directory else str(self._work_dir))
-            _outside = params.directory is not None and not is_within_directory(dir_path.canonical(), self._work_dir)
             dir_path = await resolve_vfs(str(dir_path), self._vfs, for_write=False)
             if not await dir_path.exists():
                 return ToolError(
-                    message=f"{'[out of work-dir] ' if _outside else ''}`{params.directory}` does not exist.",
+                    message=f"`{params.directory}` does not exist.",
                     brief=f"Directory not found: {params.directory}",
                 )
             if not await dir_path.is_dir():
                 return ToolError(
-                    message=f"{'[out of work-dir] ' if _outside else ''}`{params.directory}` is not a directory.",
+                    message=f"`{params.directory}` is not a directory.",
                     brief=f"Invalid directory: {params.directory}",
                 )
 
@@ -134,7 +131,6 @@ class Glob(CallableTool2[Params]):
                 return ToolError(
                     output=output,
                     message=(
-                        f"{'[out of work-dir] ' if _outside else ''}"
                         f"Pattern `{params.pattern}` starts with `**`, which is disallowed. "
                         f"Fallback result for `{pattern}`:"
                     ),
@@ -143,9 +139,9 @@ class Glob(CallableTool2[Params]):
 
             # Build message
             if len(matches) > 0:
-                message = f"{'[out of work-dir] ' if _outside else ''}Found {len(matches)} matches for pattern `{pattern}`."
+                message = f"Found {len(matches)} matches for pattern `{pattern}`."
             else:
-                message = f"{'[out of work-dir] ' if _outside else ''}No matches found for pattern `{pattern}`."
+                message = f"No matches found for pattern `{pattern}`."
 
             if truncated:
                 message += (
@@ -163,13 +159,7 @@ class Glob(CallableTool2[Params]):
             logger.warning(
                 "Glob failed: pattern={pattern}: {error}", pattern=params.pattern, error=e
             )
-            _outside_ex = False
-            try:
-                dir_path_ex = kaos_path_from_user_input(params.directory) if params.directory else self._work_dir
-                _outside_ex = params.directory is not None and not is_within_directory(dir_path_ex.canonical(), self._work_dir)
-            except Exception:
-                pass
             return ToolError(
-                message=f"{'[out of work-dir] ' if _outside_ex else ''}Glob failed for `{params.pattern}`: {e}",
+                message=f"Glob failed for `{params.pattern}`: {e}",
                 brief=f"Glob failed: {params.pattern}",
             )

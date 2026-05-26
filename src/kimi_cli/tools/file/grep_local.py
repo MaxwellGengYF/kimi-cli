@@ -35,7 +35,7 @@ from kimi_cli.share import get_share_dir
 from kimi_cli.tools.utils import ToolResultBuilder, load_desc
 from kimi_cli.utils.aiohttp import new_client_session
 from kimi_cli.utils.logging import logger
-from kimi_cli.utils.path import is_within_directory, is_within_workspace, normalize_user_path
+from kimi_cli.utils.path import is_within_workspace, normalize_user_path
 from kimi_cli.utils.sensitive import is_sensitive_file, sensitive_file_warning
 from kimi_cli.soul.agent import Runtime
 from kimi_cli.vfs import VFS
@@ -559,14 +559,6 @@ class Grep(CallableTool2[Params]):
             builder = ToolResultBuilder()
             message = ""
 
-            # Compute outside-work-dir warning
-            _outside = False
-            try:
-                _search_path = KaosPath(normalize_user_path(params.path)).expanduser().canonical()
-                _outside = not is_within_directory(_search_path, self._work_dir)
-            except Exception:
-                pass
-
             # Build rg command
             rg_path = self._rg_path
             assert rg_path is not None
@@ -624,7 +616,7 @@ class Grep(CallableTool2[Params]):
                 if not output.strip():
                     return ToolError(
                         message=(
-                            f"{'[out of work-dir] ' if _outside else ''}Grep timed out after {RG_TIMEOUT}s. "
+                            f"Grep timed out after {RG_TIMEOUT}s. "
                             "Try a more specific path or pattern."
                         ),
                         brief=f"Grep timed out | {_format_cmd(params)}",
@@ -639,7 +631,7 @@ class Grep(CallableTool2[Params]):
                     logger.warning("rg EAGAIN error, retrying with -j 1")
                     return await self.__call__(params, _retry=True)
                 return ToolError(
-                    message=f"{'[out of work-dir] ' if _outside else ''}Failed to grep. Error: {stderr_str}",
+                    message=f"Failed to grep. Error: {stderr_str}",
                     brief=f"Failed to grep | {_format_cmd(params)}",
                 )
 
@@ -767,13 +759,11 @@ class Grep(CallableTool2[Params]):
             output = "\n".join(lines)
 
             if not output and not buffer_truncated:
-                no_match_msg = f"{'[out of work-dir] ' if _outside else ''}No matches found"
+                no_match_msg = "No matches found"
                 if message:
                     no_match_msg = f"{no_match_msg}. {message}"
                 return builder.ok(message=no_match_msg, brief=_format_cmd(params))
 
-            if _outside:
-                message = f"[out of work-dir] {message}" if message else "[out of work-dir]"
             builder.write(output)
             return builder.ok(message=message, brief=_format_cmd(params))
 
@@ -787,20 +777,12 @@ class Grep(CallableTool2[Params]):
                 error=e,
             )
             return ToolError(
-                message=f"{'[out of work-dir] ' if _outside else ''}Failed to grep. Error: {str(e)}",
+                message=f"Failed to grep. Error: {str(e)}",
                 brief=f"Failed to grep | {_format_cmd(params)}",
             )
 
     async def backup_grep(self, params: Params) -> ToolReturnValue:
         try:
-            # Compute outside-work-dir warning
-            _outside = False
-            try:
-                _search_path = KaosPath(normalize_user_path(params.path)).expanduser().canonical()
-                _outside = not is_within_directory(_search_path, self._work_dir)
-            except Exception:
-                pass
-
             if not params.pattern:
                 return ToolError(
                     message="Pattern cannot be empty.",
@@ -817,7 +799,7 @@ class Grep(CallableTool2[Params]):
                 regex = _compile_regex_cached(params.pattern, flags)
             except re.error as e:
                 return ToolError(
-                    message=f"{'[out of work-dir] ' if _outside else ''}Invalid regex pattern: {e}",
+                    message=f"Invalid regex pattern: {e}",
                     brief=f"Invalid pattern | {_format_cmd(params)}",
                 )
 
@@ -827,7 +809,7 @@ class Grep(CallableTool2[Params]):
             logical_search_path = KaosPath(params.path).expanduser().canonical()
             if not is_within_workspace(logical_search_path, self._work_dir, self._additional_dirs):
                 return ToolError(
-                    message=f"[out of work-dir] `{params.path}` is outside the workspace.",
+                    message=f"`{params.path}` is outside the workspace.",
                     brief=f"Path outside workspace | {_format_cmd(params)}",
                 )
 
@@ -840,7 +822,7 @@ class Grep(CallableTool2[Params]):
 
             if not search_path.exists():
                 return ToolError(
-                    message=f"{'[out of work-dir] ' if _outside else ''}`{params.path}` does not exist.",
+                    message=f"`{params.path}` does not exist.",
                     brief=f"Path not found | {_format_cmd(params)}",
                 )
 
@@ -983,13 +965,11 @@ class Grep(CallableTool2[Params]):
             output = "\n".join(lines)
 
             if not output:
-                no_match_msg = f"{'[out of work-dir] ' if _outside else ''}No matches found"
+                no_match_msg = "No matches found"
                 if message:
                     no_match_msg = f"{no_match_msg}. {message}"
                 return builder.ok(message=no_match_msg, brief=_format_cmd(params))
 
-            if _outside:
-                message = f"[out of work-dir] {message}" if message else "[out of work-dir]"
             builder.write(output)
             return builder.ok(message=message, brief=_format_cmd(params))
 
@@ -1001,7 +981,7 @@ class Grep(CallableTool2[Params]):
                 error=e,
             )
             return ToolError(
-                message=f"{'[out of work-dir] ' if _outside else ''}Failed to grep. Error: {str(e)}",
+                message=f"Failed to grep. Error: {str(e)}",
                 brief=f"Failed to grep | {_format_cmd(params)}",
             )
 
