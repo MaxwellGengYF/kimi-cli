@@ -35,7 +35,7 @@ def test_char_limit_truncation():
     result = builder.ok("Operation completed")
     assert result.output == "Hello[...truncated]"
     assert "Operation completed." in result.message
-    assert "Output is truncated" in result.message
+    assert "Output truncated" in result.message
 
 
 def test_line_length_limit():
@@ -49,7 +49,7 @@ def test_line_length_limit():
     result = builder.ok()
     assert isinstance(result.output, str)
     assert "[...truncated]" in result.output
-    assert "Output is truncated" in result.message
+    assert "Output truncated" in result.message
 
 
 def test_both_limits():
@@ -69,7 +69,7 @@ def test_both_limits():
     result = builder.ok()
     assert isinstance(result.output, str)
     assert "[...truncated]" in result.output
-    assert "Output is truncated" in result.message
+    assert "Output truncated" in result.message
 
 
 def test_error_result():
@@ -94,7 +94,7 @@ def test_error_with_truncation():
     assert isinstance(result.output, str)
     assert "[...truncated]" in result.output
     assert "Command failed" in result.message
-    assert "Output is truncated" in result.message
+    assert "Output truncated" in result.message
     assert result.brief == "Failed"
 
 

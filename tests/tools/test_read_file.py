@@ -100,7 +100,7 @@ async def test_read_nonexistent_file(read_file_tool: ReadFile, temp_work_dir: Ka
     result = await read_file_tool(Params(path=str(nonexistent_file)))
     assert result.is_error
     assert result.message == snapshot(f"`{nonexistent_file}` does not exist.")
-    assert result.brief == snapshot('File not found: C:\\Users\\vip\\AppData\\Local\\Temp\\tmp0yhmp0bk\\nonexistent.txt')
+    assert result.brief == snapshot("File not found: C:\\Users\\vip\\AppData\\Local\\Temp\\tmprzflymqr\\nonexistent.txt")
 
 
 async def test_read_directory_instead_of_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
@@ -108,7 +108,7 @@ async def test_read_directory_instead_of_file(read_file_tool: ReadFile, temp_wor
     result = await read_file_tool(Params(path=str(temp_work_dir)))
     assert result.is_error
     assert result.message == snapshot(f"`{temp_work_dir}` is not a file.")
-    assert result.brief == snapshot('Invalid path: C:\\Users\\vip\\AppData\\Local\\Temp\\tmpaya1setp')
+    assert result.brief == snapshot("Invalid path: C:\\Users\\vip\\AppData\\Local\\Temp\\tmpzzdfoec8")
 
 
 async def test_read_with_relative_path(
@@ -165,7 +165,7 @@ async def test_read_image_file(read_file_tool: ReadFile, temp_work_dir: KaosPath
     assert result.message == snapshot(
         f"`{image_file}` is a image file. Use other appropriate tools to read image or video files."
     )
-    assert result.brief == snapshot('Unsupported file type: C:\\Users\\vip\\AppData\\Local\\Temp\\tmp72_gnsw6\\sample.png')
+    assert result.brief == snapshot("Unsupported file type: C:\\Users\\vip\\AppData\\Local\\Temp\\tmpthizhpoj\\sample.png")
 
 
 async def test_read_extensionless_image_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
@@ -180,7 +180,7 @@ async def test_read_extensionless_image_file(read_file_tool: ReadFile, temp_work
     assert result.message == snapshot(
         f"`{image_file}` is a image file. Use other appropriate tools to read image or video files."
     )
-    assert result.brief == snapshot('Unsupported file type: C:\\Users\\vip\\AppData\\Local\\Temp\\tmps91y3384\\sample')
+    assert result.brief == snapshot("Unsupported file type: C:\\Users\\vip\\AppData\\Local\\Temp\\tmpafr3cx15\\sample")
 
 
 async def test_read_video_file(read_file_tool: ReadFile, temp_work_dir: KaosPath):
@@ -195,7 +195,7 @@ async def test_read_video_file(read_file_tool: ReadFile, temp_work_dir: KaosPath
     assert result.message == snapshot(
         f"`{video_file}` is a video file. Use other appropriate tools to read image or video files."
     )
-    assert result.brief == snapshot('Unsupported file type: C:\\Users\\vip\\AppData\\Local\\Temp\\tmpmy73jkqt\\sample.mp4')
+    assert result.brief == snapshot("Unsupported file type: C:\\Users\\vip\\AppData\\Local\\Temp\\tmp1zxavc9s\\sample.mp4")
 
 
 async def test_read_line_offset_beyond_file_length(read_file_tool: ReadFile, sample_file: KaosPath):
@@ -442,7 +442,7 @@ async def test_read_with_tilde_path_expansion(read_file_tool: ReadFile, temp_wor
         assert not result.is_error
         assert "Test content for tilde expansion" in result.output
         assert result.message == snapshot(
-            '[out of work-dir] 1 lines read from file starting from line 1. Total lines in file: 1. End of file reached.'
+            "1 lines read from file starting from line 1. Total lines in file: 1. End of file reached."
         )
     finally:
         # Clean up
