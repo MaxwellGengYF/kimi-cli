@@ -36,7 +36,7 @@ def test_default_config_dump():
                 "max_ralph_iterations": 0,
                 "reserved_context_size": 50000,
                 "compaction_trigger_ratio": 0.85,
-                "max_system_prompt_tokens": 20000,
+                "max_system_prompt_tokens": 4000,
                 "max_preserved_messages": 2,
                 "min_preserved_messages": 1,
                 "adaptive_preserve_enabled": True,

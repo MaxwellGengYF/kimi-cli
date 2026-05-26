@@ -93,10 +93,10 @@ class LoopControl(BaseModel):
     """Context usage ratio threshold for auto-compaction. Default is 0.85 (85%).
     Auto-compaction triggers when context_tokens >= max_context_size * compaction_trigger_ratio
     or when context_tokens + reserved_context_size >= max_context_size."""
-    max_system_prompt_tokens: int = Field(default=20_000, ge=1_000)
+    max_system_prompt_tokens: int = Field(default=4_000, ge=1_000)
     """Maximum token count for the system prompt. If the constructed prompt exceeds
     this budget, step memory and changed-files lists are truncated progressively.
-    Default is 20_000."""
+    Default is 4_000."""
     max_preserved_messages: int = Field(default=2, ge=1, le=10)
     """Maximum number of recent user/assistant message pairs to preserve verbatim
     during context compaction. Default is 2."""
