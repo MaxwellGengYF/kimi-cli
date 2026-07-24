@@ -251,6 +251,10 @@ class GoogleGenAIStreamedMessage:
         return self._id
 
     @property
+    def trace_id(self) -> str | None:
+        return None
+
+    @property
     def usage(self) -> TokenUsage | None:
         if self._usage is None:
             return None
